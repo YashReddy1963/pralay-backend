@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environment
+venv/
+.env
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Static files
+staticfiles/
+
+# Media uploads
+media/
+
+# Node (if present)
+node_modules/
+package-lock.json

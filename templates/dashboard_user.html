@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}User Dashboard - Pralay{% endblock %}
+
+{% block content %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="#">Pralay</a>
+        <div class="navbar-nav ms-auto">
+            <span class="navbar-text me-3">Welcome, {{ user.get_full_name|default:user.email }}</span>
+            <a class="btn btn-outline-light" href="{% url 'logout' %}">Logout</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h2 mb-4">User Dashboard</h1>
+            <p class="text-muted">Manage your disaster reports and stay informed about emergency situations.</p>
+        </div>
+    </div>
+    
+    <div class="row g-4">
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-exclamation-triangle-fill text-warning display-4 mb-3"></i>
+                    <h5 class="card-title">Report Hazard</h5>
+                    <p class="card-text">Report emergency situations, hazards, or incidents in your area.</p>
+                    <a href="#" class="btn btn-warning">Report Now</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-list-check text-info display-4 mb-3"></i>
+                    <h5 class="card-title">My Reports</h5>
+                    <p class="card-text">View and track the status of your submitted reports.</p>
+                    <a href="#" class="btn btn-info">View Reports</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-map text-success display-4 mb-3"></i>
+                    <h5 class="card-title">Emergency Map</h5>
+                    <p class="card-text">View real-time emergency situations and relief centers on the map.</p>
+                    <a href="#" class="btn btn-success">View Map</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-bell text-danger display-4 mb-3"></i>
+                    <h5 class="card-title">Emergency Alerts</h5>
+                    <p class="card-text">Receive important emergency notifications and updates.</p>
+                    <a href="#" class="btn btn-danger">View Alerts</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-gear text-secondary display-4 mb-3"></i>
+                    <h5 class="card-title">Settings</h5>
+                    <p class="card-text">Manage your profile, notifications, and account settings.</p>
+                    <a href="#" class="btn btn-secondary">Settings</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <i class="bi bi-question-circle text-primary display-4 mb-3"></i>
+                    <h5 class="card-title">Help & Support</h5>
+                    <p class="card-text">Get help, report issues, or contact support.</p>
+                    <a href="#" class="btn btn-primary">Get Help</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
