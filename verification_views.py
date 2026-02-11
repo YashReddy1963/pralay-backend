@@ -9,7 +9,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import json
 import logging
-from .ai_verification_service import verify_image_endpoint
+#from .ai_verification_service import verify_image_endpoint
 
 logger = logging.getLogger(__name__)
 
