@@ -26,7 +26,11 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ['pralay-backend-1.onrender.com']
+ALLOWED_HOSTS = [
+    'pralay-backend-1.onrender.com',
+    'localhost',
+    '127.0.0.1',
+]
 
 
 # Application definition
@@ -52,6 +56,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'Pralay.cors_middleware.CorsMiddleware',  # Custom CORS middleware to ensure headers on errors
 ]
 
 ROOT_URLCONF = 'Pralay.urls'
@@ -175,8 +180,33 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
-# For development only - allow all origins
+# For production - allow all origins (can be restricted later)
 CORS_ALLOW_ALL_ORIGINS = True
+
+# CORS additional settings
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Ensure CORS headers are added to all responses
+CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
 
 # CSRF Configuration
 CSRF_TRUSTED_ORIGINS = [

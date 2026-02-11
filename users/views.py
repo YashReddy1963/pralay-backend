@@ -12,10 +12,40 @@ from django.utils import timezone
 from django.middleware.csrf import get_token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from functools import wraps
 import json
+import logging
 from .forms import CustomUserCreationForm, CustomAuthenticationForm, AuthorityCreationForm, TeamMemberForm, SubAuthorityForm, SubAuthorityCreationForm, TeamMemberCreationForm, SubAuthorityTeamMemberCreationForm
 from .models import CustomUser, OTP, TeamMember, SubAuthority, SubAuthorityTeamMember, RefreshToken
 from Pralay.token_auth import token_authenticate_user
+
+logger = logging.getLogger(__name__)
+
+def cors_headers(view_func):
+    """Decorator to ensure CORS headers are always added to responses"""
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        try:
+            response = view_func(request, *args, **kwargs)
+            # Ensure CORS headers are present
+            if isinstance(response, JsonResponse):
+                origin = request.META.get('HTTP_ORIGIN', '*')
+                response['Access-Control-Allow-Origin'] = origin
+                response['Access-Control-Allow-Credentials'] = 'true'
+                response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+                response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Requested-With'
+            return response
+        except Exception as e:
+            logger.error(f"Error in {view_func.__name__}: {str(e)}", exc_info=True)
+            # Return error response with CORS headers
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response = JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Requested-With'
+            return response
+    return _wrapped_view
 
 def landing_page(request):
     """Landing page with Register and Login buttons"""
@@ -198,20 +228,50 @@ def api_create_authority(request):
         return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
 
 # API Endpoints for Frontend
+@cors_headers
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "OPTIONS"])
 def api_send_otp(request):
     """Send OTP to email for registration"""
+    # Handle CORS preflight requests
+    if request.method == 'OPTIONS':
+        response = JsonResponse({})
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Requested-With'
+        response['Access-Control-Max-Age'] = '86400'
+        return response
     try:
         data = json.loads(request.body)
         email = data.get('email')
         
         if not email:
-            return JsonResponse({'error': 'Email is required'}, status=400)
+            response = JsonResponse({'error': 'Email is required'}, status=400)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
         
         # Check if user already exists
         if CustomUser.objects.filter(email=email).exists():
-            return JsonResponse({'error': 'User with this email already exists'}, status=400)
+            response = JsonResponse({'error': 'User with this email already exists'}, status=400)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
+        
+        # Check email configuration
+        if not settings.EMAIL_HOST_USER or not settings.DEFAULT_FROM_EMAIL:
+            logger.error("Email configuration missing: EMAIL_HOST_USER or DEFAULT_FROM_EMAIL not set")
+            response = JsonResponse({
+                'error': 'Email service is not configured. Please contact support.'
+            }, status=500)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
         
         # Generate and send OTP
         otp = OTP.generate_otp(email)
@@ -239,53 +299,108 @@ def api_send_otp(request):
                 [email],
                 fail_silently=False,
             )
-            return JsonResponse({
+            response = JsonResponse({
                 'success': True,
                 'message': 'OTP sent successfully to your email'
             })
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
         except Exception as e:
-            return JsonResponse({
-                'error': 'Failed to send email. Please check your email address.'
+            logger.error(f"Failed to send email to {email}: {str(e)}", exc_info=True)
+            response = JsonResponse({
+                'error': f'Failed to send email: {str(e)}'
             }, status=500)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
             
     except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        response = JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        return response
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        logger.error(f"Error in api_send_otp: {str(e)}", exc_info=True)
+        response = JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        return response
 
+@cors_headers
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "OPTIONS"])
 def api_verify_otp(request):
     """Verify OTP and complete registration"""
+    # Handle CORS preflight requests
+    if request.method == 'OPTIONS':
+        response = JsonResponse({})
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Requested-With'
+        response['Access-Control-Max-Age'] = '86400'
+        return response
+    
     try:
         data = json.loads(request.body)
         email = data.get('email')
         otp_code = data.get('otp')
         
         if not email or not otp_code:
-            return JsonResponse({'error': 'Email and OTP are required'}, status=400)
+            response = JsonResponse({'error': 'Email and OTP are required'}, status=400)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
         
         # Find and verify OTP
         try:
             otp = OTP.objects.get(email=email, otp_code=otp_code)
         except OTP.DoesNotExist:
-            return JsonResponse({'error': 'Invalid OTP'}, status=400)
+            response = JsonResponse({'error': 'Invalid OTP'}, status=400)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
         
         if not otp.is_valid():
-            return JsonResponse({'error': 'OTP has expired or already used'}, status=400)
+            response = JsonResponse({'error': 'OTP has expired or already used'}, status=400)
+            origin = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Origin'] = origin
+            response['Access-Control-Allow-Credentials'] = 'true'
+            return response
         
         # Mark OTP as verified
         otp.verify()
         
-        return JsonResponse({
+        response = JsonResponse({
             'success': True,
             'message': 'OTP verified successfully'
         })
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        return response
         
     except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        response = JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        return response
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        logger.error(f"Error in api_verify_otp: {str(e)}", exc_info=True)
+        response = JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        return response
 
 @csrf_exempt
 @require_http_methods(["POST"])
