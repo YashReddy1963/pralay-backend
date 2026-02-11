@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime
 from .ai_verification_service import verify_image_endpoint
-from .video_verification_service import verify_video_endpoint
+# from .video_verification_service import verify_video_endpoint
 
 logger = logging.getLogger(__name__)
 
