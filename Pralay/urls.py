@@ -18,16 +18,17 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from . import verification_views, hazard_report_views, connection_views, take_action_views, analytics_views
+from . import hazard_report_views, connection_views, take_action_views, analytics_views
+#from . import verification_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('users.urls')),
     # AI Verification API endpoints
-    path('api/verify-image/', verification_views.verify_image_api, name='verify_image'),
-    path('api/verify-video/', verification_views.verify_video_api, name='verify_video'),
-    path('api/verify-images/', verification_views.batch_verify_images, name='batch_verify_images'),
-    path('api/verification-info/', verification_views.verification_service_info, name='verification_info'),
+    #path('api/verify-image/', verification_views.verify_image_api, name='verify_image'),
+    #path('api/verify-video/', verification_views.verify_video_api, name='verify_video'),
+    #path('api/verify-images/', verification_views.batch_verify_images, name='batch_verify_images'),
+    #path('api/verification-info/', verification_views.verification_service_info, name='verification_info'),
     
     # Hazard Report API endpoints
     path('api/submit-hazard-report/', hazard_report_views.SubmitHazardReportView.as_view(), name='submit_hazard_report'),
