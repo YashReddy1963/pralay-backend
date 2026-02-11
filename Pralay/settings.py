@@ -26,7 +26,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ['.onrender.com']
+ALLOWED_HOSTS = ['pralay-backend-1.onrender.com']
 
 
 # Application definition
