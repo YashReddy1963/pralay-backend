@@ -3,7 +3,7 @@ import requests
 import json
 
 # Test sub-authority creation specifically
-base_url = "http://localhost:8000"
+base_url = "https://pralay-frontend.vercel.app"
 
 print("=== Testing Sub-Authority Creation ===")
 

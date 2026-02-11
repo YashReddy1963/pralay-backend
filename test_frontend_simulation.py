@@ -3,7 +3,7 @@ import requests
 import json
 
 # Simulate exactly what the frontend should do
-base_url = "http://localhost:8000"
+base_url = "https://pralay-frontend.vercel.app"
 frontend_url = "http://localhost:8080"
 
 print("=== Simulating Frontend Request ===")

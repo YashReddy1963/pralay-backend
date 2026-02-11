@@ -3,7 +3,7 @@ import requests
 import json
 
 # Test the actual API endpoints that frontend calls
-base_url = "http://localhost:8000"
+base_url = "https://pralay-frontend.vercel.app"
 
 print("=== Testing Real API Endpoints ===")
 

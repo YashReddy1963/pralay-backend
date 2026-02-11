@@ -3,7 +3,7 @@ import requests
 import json
 
 # Test APIs with authentication
-base_url = "http://localhost:8000"
+base_url = "https://pralay-frontend.vercel.app"
 
 print("=== Testing APIs with Authentication ===")
 
