@@ -6,7 +6,6 @@ from django.urls import reverse
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.middleware.csrf import get_token
@@ -15,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from functools import wraps
 import json
 import logging
+from .email_service import EmailService
 from .forms import CustomUserCreationForm, CustomAuthenticationForm, AuthorityCreationForm, TeamMemberForm, SubAuthorityForm, SubAuthorityCreationForm, TeamMemberCreationForm, SubAuthorityTeamMemberCreationForm
 from .models import CustomUser, OTP, TeamMember, SubAuthority, SubAuthorityTeamMember, RefreshToken
 from Pralay.token_auth import token_authenticate_user
@@ -233,103 +233,70 @@ def api_create_authority(request):
 @require_http_methods(["POST", "OPTIONS"])
 def api_send_otp(request):
     """Send OTP to email for registration"""
-    # Handle CORS preflight requests
+
     if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        origin = request.META.get('HTTP_ORIGIN', '*')
-        response['Access-Control-Allow-Origin'] = origin
-        response['Access-Control-Allow-Credentials'] = 'true'
-        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Requested-With'
-        response['Access-Control-Max-Age'] = '86400'
-        return response
+        return JsonResponse({}, status=200)
+
     try:
         data = json.loads(request.body)
         email = data.get('email')
-        
+
         if not email:
-            response = JsonResponse({'error': 'Email is required'}, status=400)
-            origin = request.META.get('HTTP_ORIGIN', '*')
-            response['Access-Control-Allow-Origin'] = origin
-            response['Access-Control-Allow-Credentials'] = 'true'
-            return response
-        
-        # Check if user already exists
+            return JsonResponse({'error': 'Email is required'}, status=400)
+
         if CustomUser.objects.filter(email=email).exists():
-            response = JsonResponse({'error': 'User with this email already exists'}, status=400)
-            origin = request.META.get('HTTP_ORIGIN', '*')
-            response['Access-Control-Allow-Origin'] = origin
-            response['Access-Control-Allow-Credentials'] = 'true'
-            return response
-        
-        # Check email configuration
-        if not settings.EMAIL_HOST_USER or not settings.DEFAULT_FROM_EMAIL:
-            logger.error("Email configuration missing: EMAIL_HOST_USER or DEFAULT_FROM_EMAIL not set")
-            response = JsonResponse({
-                'error': 'Email service is not configured. Please contact support.'
-            }, status=500)
-            origin = request.META.get('HTTP_ORIGIN', '*')
-            response['Access-Control-Allow-Origin'] = origin
-            response['Access-Control-Allow-Credentials'] = 'true'
-            return response
-        
-        # Generate and send OTP
-        otp = OTP.generate_otp(email)
-        
-        # Send email
-        subject = 'Pralay Platform - OTP Verification'
-        message = f'''
-        Welcome to Pralay Digital Disaster Management Platform!
-        
-        Your OTP for registration is: {otp.otp_code}
-        
-        This OTP will expire in 10 minutes.
-        
-        If you did not request this, please ignore this email.
-        
-        Best regards,
-        Pralay Team
-        '''
-        
-        try:
-            send_mail(
-                subject,
-                message,
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
+            return JsonResponse({'error': 'User with this email already exists'}, status=400)
+
+        # ✅ Check SendGrid config instead of SMTP
+        if not settings.SENDGRID_API_KEY or not settings.DEFAULT_FROM_EMAIL:
+            logger.error("SendGrid configuration missing")
+            return JsonResponse(
+                {'error': 'Email service not configured properly'},
+                status=500
             )
-            response = JsonResponse({
-                'success': True,
-                'message': 'OTP sent successfully to your email'
-            })
-            origin = request.META.get('HTTP_ORIGIN', '*')
-            response['Access-Control-Allow-Origin'] = origin
-            response['Access-Control-Allow-Credentials'] = 'true'
-            return response
-        except Exception as e:
-            logger.error(f"Failed to send email to {email}: {str(e)}", exc_info=True)
-            response = JsonResponse({
-                'error': f'Failed to send email: {str(e)}'
-            }, status=500)
-            origin = request.META.get('HTTP_ORIGIN', '*')
-            response['Access-Control-Allow-Origin'] = origin
-            response['Access-Control-Allow-Credentials'] = 'true'
-            return response
-            
+
+        # Generate OTP
+        otp = OTP.generate_otp(email)
+
+        subject = "Pralay Platform - OTP Verification"
+        message = f"""
+Welcome to Pralay Digital Disaster Management Platform!
+
+Your OTP for registration is: {otp.otp_code}
+
+This OTP will expire in 10 minutes.
+
+If you did not request this, please ignore this email.
+
+Best regards,
+Pralay Team
+"""
+
+        # ✅ Use SendGrid service instead of send_mail
+        email_sent = EmailService.send_email(
+            subject=subject,
+            plain_text=message,
+            to_email=email
+        )
+
+        if not email_sent:
+            return JsonResponse(
+                {'error': 'Failed to send OTP email'},
+                status=500
+            )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'OTP sent successfully to your email'
+        })
+
     except json.JSONDecodeError:
-        response = JsonResponse({'error': 'Invalid JSON data'}, status=400)
-        origin = request.META.get('HTTP_ORIGIN', '*')
-        response['Access-Control-Allow-Origin'] = origin
-        response['Access-Control-Allow-Credentials'] = 'true'
-        return response
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+
     except Exception as e:
         logger.error(f"Error in api_send_otp: {str(e)}", exc_info=True)
-        response = JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
-        origin = request.META.get('HTTP_ORIGIN', '*')
-        response['Access-Control-Allow-Origin'] = origin
-        response['Access-Control-Allow-Credentials'] = 'true'
-        return response
+        return JsonResponse({'error': 'Server error'}, status=500)
+
 
 @cors_headers
 @csrf_exempt

@@ -6,7 +6,7 @@ from django.views.decorators.http import require_http_methods
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.conf import settings
-from django.core.mail import send_mail
+from users.email_service import EmailService
 from django.template.loader import render_to_string
 from django.utils import timezone
 from twilio.rest import Client
@@ -221,14 +221,11 @@ District Chairman: District Chairman (ID: 1)
 Action Taken At: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}
                 """
                 
-                send_mail(
-                    email_subject,
-                    email_body,
-                    settings.EMAIL_HOST_USER,
-                    [member.email],
-                    fail_silently=False,
+                EmailService.send_email(
+                    subject=email_subject,
+                    plain_text=email_body,
+                    to_email=member.email
                 )
-                
                 email_results.append({
                     'member_id': member.id,
                     'member_name': member.get_full_name(),

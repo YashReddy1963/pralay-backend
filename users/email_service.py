@@ -1,4 +1,5 @@
-from django.core.mail import send_mail
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
@@ -26,16 +27,18 @@ class EmailService:
             html_content = EmailService._create_verification_email_html(report_data, citizen_name)
             plain_text_content = EmailService._create_verification_email_text(report_data, citizen_name)
             
-            # Send email
-            send_mail(
-                subject=subject,
-                message=plain_text_content,
+            
+            #send mail using sendgrid
+            mail = Mail(
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[citizen_email],
-                html_message=html_content,
-                fail_silently=False,
+                to_emails=citizen_email,
+                subject=subject,
+                html_content=html_content,
+                plain_text_content=plain_text_content,
             )
             
+            sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+            response = sg.send(mail)
             logger.info(f"Hazard verification email sent successfully to {citizen_email} for report {report_data.get('report_id')}")
             return True
             
