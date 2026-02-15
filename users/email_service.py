@@ -9,6 +9,47 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     """Service for sending various types of emails"""
+
+    @staticmethod
+    def send_email(subject, plain_text, to_email):
+        """
+        Generic SendGrid email sender
+        """
+        try:
+            url = "https://api.sendgrid.com/v3/mail/send"
+
+            headers = {
+                "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            data = {
+                "personalizations": [
+                    {
+                        "to": [{"email": to_email}],
+                        "subject": subject
+                    }
+                ],
+                "from": {"email": settings.DEFAULT_FROM_EMAIL},
+                "content": [
+                    {
+                        "type": "text/plain",
+                        "value": plain_text
+                    }
+                ]
+            }
+
+            response = requests.post(url, headers=headers, json=data)
+
+            if response.status_code == 202:
+                return True
+            else:
+                print("SendGrid error:", response.text)
+                return False
+
+        except Exception as e:
+            print("SendGrid exception:", str(e))
+            return False
     
     @staticmethod
     def send_hazard_verification_email(report_data, citizen_email, citizen_name):
@@ -27,7 +68,7 @@ class EmailService:
             html_content = EmailService._create_verification_email_html(report_data, citizen_name)
             plain_text_content = EmailService._create_verification_email_text(report_data, citizen_name)
             
-            
+
             #send mail using sendgrid
             mail = Mail(
                 from_email=settings.DEFAULT_FROM_EMAIL,
@@ -203,5 +244,5 @@ Pralay Coastal Safety Team
 
 ---
 This is an automated message. Please do not reply to this email.
-© 2024 Pralay Coastal Safety System
+© 2026 Pralay Coastal Safety System
         """
