@@ -180,9 +180,6 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
-# For production - allow all origins (can be restricted later)
-CORS_ALLOW_ALL_ORIGINS = True
-
 # CORS additional settings
 CORS_ALLOW_METHODS = [
     'DELETE',
