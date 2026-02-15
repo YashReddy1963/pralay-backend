@@ -13,6 +13,8 @@ class EmailService:
 
     @staticmethod
     def send_email(subject, plain_text, to_email):
+        logger.info(f"Sending email FROM: {settings.DEFAULT_FROM_EMAIL}")
+
         """
         Generic SendGrid email sender
         """
