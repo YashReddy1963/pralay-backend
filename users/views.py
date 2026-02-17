@@ -400,12 +400,10 @@ def api_register(request):
             # Clean up OTP
             otp.delete()
             
-            # Login user
-            login(request, user)
-            
+            # Return success - user must login separately to get token
             return JsonResponse({
                 'success': True,
-                'message': 'Registration successful!',
+                'message': 'Registration successful! Please login to get your access token.',
                 'user': {
                     'id': user.id,
                     'email': user.email,
