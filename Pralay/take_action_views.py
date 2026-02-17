@@ -7,6 +7,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.conf import settings
 from users.email_service import EmailService
+from users.authentication import token_required
 from django.template.loader import render_to_string
 from django.utils import timezone
 from twilio.rest import Client
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def take_action_endpoint(request):
     """
     API endpoint for Take Action feature
@@ -75,10 +77,9 @@ def take_action_endpoint(request):
         #         'message': 'Authentication required'
         #     }, status=401)
         
-        # Get team members under this district chairman
-        # For testing, use district chairman ID 1
+        # Get team members under this district chairman (current user)
         team_members = SubAuthorityTeamMember.objects.filter(
-            sub_authority_id=1,
+            sub_authority=request.user,
             is_active=True
         )
         
@@ -277,21 +278,12 @@ Action Taken At: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def get_team_members_endpoint(request):
-    """
-    API endpoint to get team members for the current district chairman
-    """
+    """API endpoint to get team members for the current authority. Requires Bearer token."""
     try:
-        # Temporarily disable auth for testing
-        # if not request.user.is_authenticated:
-        #     return JsonResponse({
-        #         'success': False,
-        #         'message': 'Authentication required'
-        #     }, status=401)
-        
-        # For testing, get team members for district chairman ID 1
         team_members = SubAuthorityTeamMember.objects.filter(
-            sub_authority_id=1,
+            sub_authority=request.user,
             is_active=True
         )
         
@@ -322,14 +314,15 @@ def get_team_members_endpoint(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def test_auth_endpoint(request):
-    """Test endpoint to debug authentication"""
+    """Test endpoint for token authentication"""
     return JsonResponse({
         'success': True,
         'message': 'Test endpoint working',
-        'user_authenticated': request.user.is_authenticated,
-        'user_id': request.user.id if hasattr(request.user, 'id') else None,
-        'user_email': request.user.email if hasattr(request.user, 'email') else None
+        'user_authenticated': True,
+        'user_id': request.user.id,
+        'user_email': request.user.email
     })
 
 @csrf_exempt

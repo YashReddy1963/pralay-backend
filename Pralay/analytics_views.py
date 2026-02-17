@@ -5,12 +5,14 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import datetime, timedelta
 from users.models import OceanHazardReport, CustomUser
+from users.authentication import token_required
 import logging
 
 logger = logging.getLogger(__name__)
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def analytics_data_endpoint(request):
     """
     API endpoint to get analytics data for the dashboard

@@ -9,7 +9,6 @@ from decimal import Decimal
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.core.files.base import ContentFile
@@ -19,53 +18,28 @@ import uuid
 
 from users.models import OceanHazardReport, HazardImage, CustomUser
 from users.email_service import EmailService
+from users.authentication import TokenRequiredMixin
 
 logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class SubmitHazardReportView(View):
-    """API endpoint for submitting ocean hazard reports"""
+class SubmitHazardReportView(TokenRequiredMixin, View):
+    """API endpoint for submitting ocean hazard reports. Requires Bearer token."""
     
     def post(self, request):
         try:
-            # Parse request data
             data = json.loads(request.body)
-            
-            # Extract basic report information
             hazard_type = data.get('hazard_type')
             description = data.get('description')
             location_data = data.get('location', {})
             images_data = data.get('images', [])
             verification_results = data.get('verification_results', [])
             
-            # Validate required fields
             if not all([hazard_type, description, location_data]):
                 return JsonResponse({
                     'success': False,
                     'message': 'Missing required fields: hazard_type, description, location'
                 }, status=400)
-            
-            # Debug authentication info
-            logger.info(f"SubmitHazardReportView: User authenticated: {request.user.is_authenticated}")
-            logger.info(f"SubmitHazardReportView: User ID: {request.user.id if request.user.is_authenticated else 'N/A'}")
-            logger.info(f"SubmitHazardReportView: User email: {request.user.email if request.user.is_authenticated else 'N/A'}")
-            logger.info(f"SubmitHazardReportView: Session key: {request.session.session_key}")
-            logger.info(f"SubmitHazardReportView: Cookies: {list(request.COOKIES.keys())}")
-            
-            # Get the authenticated user from the request
-            if not request.user.is_authenticated:
-                logger.warning("SubmitHazardReportView: User not authenticated")
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Authentication required to submit reports',
-                    'debug_info': {
-                        'user_authenticated': request.user.is_authenticated,
-                        'user_id': None,
-                        'user_email': None,
-                        'session_key': request.session.session_key,
-                        'cookies': list(request.COOKIES.keys())
-                    }
-                }, status=401)
             
             user = request.user
             logger.info(f"SubmitHazardReportView: User {user.id} ({user.email}) submitting report")
@@ -218,29 +192,21 @@ class SubmitHazardReportView(View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class GetHazardReportsView(View):
-    """API endpoint for retrieving hazard reports"""
+class GetHazardReportsView(TokenRequiredMixin, View):
+    """API endpoint for retrieving hazard reports. Requires Bearer token."""
     
     def get(self, request):
         try:
-            # Get query parameters
             status = request.GET.get('status')
             hazard_type = request.GET.get('hazard_type')
             state = request.GET.get('state')
             district = request.GET.get('district')
-            user_reports = request.GET.get('user_reports', '').lower() == 'true'  # New parameter for user's reports
+            user_reports = request.GET.get('user_reports', '').lower() == 'true'
             limit = int(request.GET.get('limit', 50))
             
-            # Build query
             reports_query = OceanHazardReport.objects.select_related('reported_by', 'reviewed_by').prefetch_related('hazard_images')
             
-            # Filter by authenticated user if user_reports=true
             if user_reports:
-                if not request.user.is_authenticated:
-                    return JsonResponse({
-                        'success': False,
-                        'message': 'Authentication required to fetch user reports'
-                    }, status=401)
                 reports_query = reports_query.filter(reported_by=request.user)
             
             if status:
@@ -315,8 +281,8 @@ class GetHazardReportsView(View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class UpdateHazardReportStatusView(View):
-    """API endpoint for updating hazard report status (for officials)"""
+class UpdateHazardReportStatusView(TokenRequiredMixin, View):
+    """API endpoint for updating hazard report status (for officials). Requires Bearer token."""
     
     def post(self, request):
         try:
@@ -353,9 +319,7 @@ class UpdateHazardReportStatusView(View):
             elif new_status == 'discarded':
                 report.is_verified = False
             
-            # Set the reviewing official from the authenticated user
-            if request.user.is_authenticated:
-                report.reviewed_by = request.user
+            report.reviewed_by = request.user
             
             report.save()
             
@@ -418,8 +382,8 @@ class UpdateHazardReportStatusView(View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class BulkUpdateHazardReportsView(View):
-    """API endpoint for bulk updating multiple hazard reports"""
+class BulkUpdateHazardReportsView(TokenRequiredMixin, View):
+    """API endpoint for bulk updating multiple hazard reports. Requires Bearer token."""
     
     def post(self, request):
         try:
@@ -450,10 +414,7 @@ class BulkUpdateHazardReportsView(View):
                     elif new_status == 'discarded':
                         report.is_verified = False
                     
-                    # Set the reviewing official from the authenticated user
-                    if request.user.is_authenticated:
-                        report.reviewed_by = request.user
-                    
+                    report.reviewed_by = request.user
                     report.save()
                     updated_count += 1
                     
@@ -518,8 +479,8 @@ class BulkUpdateHazardReportsView(View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class BulkDeleteHazardReportsView(View):
-    """API endpoint for bulk deleting multiple hazard reports"""
+class BulkDeleteHazardReportsView(TokenRequiredMixin, View):
+    """API endpoint for bulk deleting multiple hazard reports. Requires Bearer token."""
     
     def post(self, request):
         try:
@@ -564,8 +525,8 @@ class BulkDeleteHazardReportsView(View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class DeleteHazardReportView(View):
-    """API endpoint for deleting a single hazard report"""
+class DeleteHazardReportView(TokenRequiredMixin, View):
+    """API endpoint for deleting a single hazard report. Requires Bearer token."""
     
     def delete(self, request, report_id):
         try:
@@ -592,31 +553,13 @@ class DeleteHazardReportView(View):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class TestUserReportsView(View):
-    """Test endpoint to debug user reports issue"""
+class TestUserReportsView(TokenRequiredMixin, View):
+    """Test endpoint to debug user reports. Requires Bearer token."""
     
     def get(self, request):
         try:
-            logger.info(f"TestUserReportsView: User authenticated: {request.user.is_authenticated}")
-            logger.info(f"TestUserReportsView: User ID: {request.user.id if request.user.is_authenticated else 'N/A'}")
-            logger.info(f"TestUserReportsView: User email: {request.user.email if request.user.is_authenticated else 'N/A'}")
-            
-            if not request.user.is_authenticated:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'User not authenticated',
-                    'user_id': None,
-                    'user_email': None,
-                    'total_reports': 0
-                })
-            
-            # Count all reports for this user
             total_reports = OceanHazardReport.objects.filter(reported_by=request.user).count()
-            logger.info(f"TestUserReportsView: Total reports for user {request.user.id}: {total_reports}")
-            
-            # Get a sample report
             sample_report = OceanHazardReport.objects.filter(reported_by=request.user).first()
-            
             return JsonResponse({
                 'success': True,
                 'message': 'Test successful',
@@ -625,11 +568,7 @@ class TestUserReportsView(View):
                 'total_reports': total_reports,
                 'sample_report_id': sample_report.report_id if sample_report else None,
                 'sample_report_hazard_type': sample_report.hazard_type if sample_report else None,
-                'user_is_authenticated': request.user.is_authenticated,
-                'user_is_anonymous': request.user.is_anonymous,
-                'session_key': request.session.session_key,
                 'auth_header': request.META.get('HTTP_AUTHORIZATION', 'None'),
-                'cookies': list(request.COOKIES.keys())
             })
             
         except Exception as e:
@@ -643,47 +582,38 @@ class TestUserReportsView(View):
             })
 
 @method_decorator(csrf_exempt, name='dispatch')
-class DebugReportsView(View):
-    """Debug endpoint to check all reports and users"""
+class DebugReportsView(TokenRequiredMixin, View):
+    """Debug endpoint to check all reports and users. Requires Bearer token."""
     
     def get(self, request):
         try:
-            # Get all reports with user info
-            all_reports = OceanHazardReport.objects.select_related('reported_by').all()[:10]  # Limit to 10
-            
-            reports_data = []
-            for report in all_reports:
-                reports_data.append({
-                    'report_id': report.report_id,
-                    'hazard_type': report.hazard_type,
-                    'reported_by_id': report.reported_by.id if report.reported_by else None,
-                    'reported_by_email': report.reported_by.email if report.reported_by else None,
-                    'reported_by_name': report.reported_by.get_full_name() if report.reported_by else None,
-                    'reported_at': report.reported_at.isoformat(),
-                })
-            
-            # Get all users
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            all_users = User.objects.all()[:10]  # Limit to 10
-            
-            users_data = []
-            for user in all_users:
-                users_data.append({
-                    'user_id': user.id,
-                    'user_email': user.email,
-                    'user_name': user.get_full_name(),
-                    'user_role': user.role,
-                })
-            
+            all_reports = OceanHazardReport.objects.select_related('reported_by').all()[:10]
+            reports_data = [
+                {
+                    'report_id': r.report_id,
+                    'hazard_type': r.hazard_type,
+                    'reported_by_id': r.reported_by.id if r.reported_by else None,
+                    'reported_by_email': r.reported_by.email if r.reported_by else None,
+                    'reported_by_name': r.reported_by.get_full_name() if r.reported_by else None,
+                    'reported_at': r.reported_at.isoformat(),
+                }
+                for r in all_reports
+            ]
+            all_users = User.objects.all()[:10]
+            users_data = [
+                {'user_id': u.id, 'user_email': u.email, 'user_name': u.get_full_name(), 'user_role': u.role}
+                for u in all_users
+            ]
             return JsonResponse({
                 'success': True,
                 'total_reports': OceanHazardReport.objects.count(),
                 'total_users': User.objects.count(),
                 'reports': reports_data,
                 'users': users_data,
-                'current_user_id': request.user.id if request.user.is_authenticated else None,
-                'current_user_email': request.user.email if request.user.is_authenticated else None,
+                'current_user_id': request.user.id,
+                'current_user_email': request.user.email,
             })
             
         except Exception as e:
@@ -694,43 +624,29 @@ class DebugReportsView(View):
             })
 
 @method_decorator(csrf_exempt, name='dispatch')
-class TestHazardReportsEndpointView(View):
-    """Test endpoint to verify the hazard reports endpoint is working"""
+class TestHazardReportsEndpointView(TokenRequiredMixin, View):
+    """Test endpoint to verify the hazard reports endpoint. Requires Bearer token."""
     
     def get(self, request):
         try:
-            # Test the same logic as GetHazardReportsView
             user_reports = request.GET.get('user_reports', '').lower() == 'true'
-            
             if user_reports:
-                if not request.user.is_authenticated:
-                    return JsonResponse({
-                        'success': False,
-                        'message': 'Authentication required to fetch user reports',
-                        'user_authenticated': False
-                    }, status=401)
-                
-                # Count reports for this user
                 user_report_count = OceanHazardReport.objects.filter(reported_by=request.user).count()
-                
                 return JsonResponse({
                     'success': True,
                     'message': 'User reports endpoint is working',
-                    'user_authenticated': True,
                     'user_id': request.user.id,
                     'user_email': request.user.email,
                     'user_report_count': user_report_count,
                     'endpoint': '/api/hazard-reports/?user_reports=true'
                 })
-            else:
-                # Test general endpoint
-                total_reports = OceanHazardReport.objects.count()
-                return JsonResponse({
-                    'success': True,
-                    'message': 'General hazard reports endpoint is working',
-                    'total_reports': total_reports,
-                    'endpoint': '/api/hazard-reports/'
-                })
+            total_reports = OceanHazardReport.objects.count()
+            return JsonResponse({
+                'success': True,
+                'message': 'General hazard reports endpoint is working',
+                'total_reports': total_reports,
+                'endpoint': '/api/hazard-reports/'
+            })
                 
         except Exception as e:
             logger.error(f"Error in TestHazardReportsEndpointView: {e}")
@@ -740,8 +656,8 @@ class TestHazardReportsEndpointView(View):
             })
 
 @method_decorator(csrf_exempt, name='dispatch')
-class TestEmailNotificationView(View):
-    """Test endpoint to verify email notification functionality"""
+class TestEmailNotificationView(TokenRequiredMixin, View):
+    """Test endpoint to verify email notification. Requires Bearer token."""
     
     def post(self, request):
         try:
@@ -797,21 +713,17 @@ class TestEmailNotificationView(View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class GetMapHazardReportsView(View):
-    """API endpoint for retrieving hazard reports for map display with district filtering"""
+class GetMapHazardReportsView(TokenRequiredMixin, View):
+    """API endpoint for retrieving hazard reports for map. Requires Bearer token."""
     
     def get(self, request):
         try:
-            # Get query parameters
-            status = request.GET.get('status')  # No default - show all reports
+            status = request.GET.get('status')
             hazard_type = request.GET.get('hazard_type')
             limit = int(request.GET.get('limit', 100))
-            
-            # Build base query
             reports_query = OceanHazardReport.objects.select_related('reported_by', 'reviewed_by').prefetch_related('hazard_images')
             
-            # Apply district filtering for district chairmen
-            if request.user.is_authenticated and request.user.role == 'district_chairman':
+            if request.user.role == 'district_chairman':
                 if request.user.district:
                     reports_query = reports_query.filter(district__icontains=request.user.district)
                     logger.info(f"Filtering reports for district chairman: {request.user.district}")
@@ -889,12 +801,12 @@ class GetMapHazardReportsView(View):
                 'success': True,
                 'reports': reports_data,
                 'total_count': len(reports_data),
-                'user_role': request.user.role if request.user.is_authenticated else 'anonymous',
-                'user_district': request.user.district if request.user.is_authenticated else None,
+                'user_role': request.user.role,
+                'user_district': request.user.district or None,
                 'filters_applied': {
                     'status': status,
                     'hazard_type': hazard_type,
-                    'district_filtered': request.user.is_authenticated and request.user.role == 'district_chairman'
+                    'district_filtered': request.user.role == 'district_chairman'
                 }
             })
             

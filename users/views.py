@@ -17,7 +17,7 @@ import logging
 from .email_service import EmailService
 from .forms import CustomUserCreationForm, CustomAuthenticationForm, AuthorityCreationForm, TeamMemberForm, SubAuthorityForm, SubAuthorityCreationForm, TeamMemberCreationForm, SubAuthorityTeamMemberCreationForm
 from .models import CustomUser, OTP, TeamMember, SubAuthority, SubAuthorityTeamMember, RefreshToken
-from Pralay.token_auth import token_authenticate_user
+from .authentication import token_required
 
 logger = logging.getLogger(__name__)
 
@@ -185,21 +185,12 @@ def manage_authorities(request):
     
     return render(request, 'manage_authorities.html', {'authorities': authorities})
 
-@login_required
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def api_create_authority(request):
     """API endpoint for creating authority from frontend"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can create authorities
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -435,7 +426,7 @@ def api_register(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_login(request):
-    """API login endpoint - supports CustomUser, TeamMember, and SubAuthority"""
+    """API login - stateless token only. No session. Returns token for Authorization header."""
     try:
         data = json.loads(request.body)
         email = data.get('email')
@@ -444,29 +435,18 @@ def api_login(request):
         if not email or not password:
             return JsonResponse({'error': 'Email and password are required'}, status=400)
         
-        # First try CustomUser (authorities, admin, regular users)
+        # CustomUser (authorities, admin, regular users) - full token auth
         try:
             user = CustomUser.objects.get(email=email)
             if user.check_password(password):
-                login(request, user)
-                
-                # Update last login time
                 user.last_login_time = timezone.now()
                 user.save()
-                
-                # Generate a simple token (in production, use JWT or Django's built-in token auth)
-                import hashlib
-                import time
-                token_string = f"{user.email}:{time.time()}:{user.id}"
-                token = hashlib.sha256(token_string.encode()).hexdigest()
-                
-                # Generate refresh token
                 refresh_token = RefreshToken.generate_token(user)
-                
+                # Same token used as Bearer for API and for refresh endpoint
                 return JsonResponse({
                     'success': True,
                     'message': 'Login successful!',
-                    'token': token,
+                    'token': refresh_token.token,
                     'refresh_token': refresh_token.token,
                     'user': {
                         'id': user.id,
@@ -479,75 +459,28 @@ def api_login(request):
         except CustomUser.DoesNotExist:
             pass
         
-        # Try TeamMember
+        # TeamMember / SubAuthority: no session; token auth not implemented for non-CustomUser
         try:
             from django.contrib.auth.hashers import check_password
             team_member = TeamMember.objects.get(email=email)
             if team_member.password_hash and check_password(password, team_member.password_hash):
-                # For team members, we need to create a session but they're not CustomUser
-                # We'll store their info in session
-                request.session['team_member_id'] = team_member.id
-                request.session['team_member_email'] = team_member.email
-                request.session['team_member_role'] = 'team_member'
-                
-                # Generate token
-                import hashlib
-                import time
-                token_string = f"{team_member.email}:{time.time()}:{team_member.id}"
-                token = hashlib.sha256(token_string.encode()).hexdigest()
-                
                 return JsonResponse({
-                    'success': True,
-                    'message': 'Login successful!',
-                    'token': token,
-                    'user': {
-                        'id': team_member.id,
-                        'email': team_member.email,
-                        'first_name': team_member.first_name,
-                        'last_name': team_member.last_name,
-                        'role': 'team_member',
-                        'designation': team_member.designation,
-                        'authority': team_member.authority.get_full_name()
-                    }
-                })
+                    'error': 'Team member login is not supported via API. Use admin dashboard.'
+                }, status=501)
         except TeamMember.DoesNotExist:
             pass
         
-        # Try SubAuthority
         try:
             from django.contrib.auth.hashers import check_password
             sub_authority = SubAuthority.objects.get(email=email)
             if sub_authority.password_hash and check_password(password, sub_authority.password_hash):
-                # For sub-authorities, we need to create a session but they're not CustomUser
-                request.session['sub_authority_id'] = sub_authority.id
-                request.session['sub_authority_email'] = sub_authority.email
-                request.session['sub_authority_role'] = sub_authority.role
-                
-                # Generate token
-                import hashlib
-                import time
-                token_string = f"{sub_authority.email}:{time.time()}:{sub_authority.id}"
-                token = hashlib.sha256(token_string.encode()).hexdigest()
-                
                 return JsonResponse({
-                    'success': True,
-                    'message': 'Login successful!',
-                    'token': token,
-                    'user': {
-                        'id': sub_authority.id,
-                        'email': sub_authority.email,
-                        'first_name': sub_authority.first_name,
-                        'last_name': sub_authority.last_name,
-                        'role': sub_authority.role,
-                        'creator': sub_authority.creator.get_full_name()
-                    }
-                })
+                    'error': 'Sub-authority login is not supported via API. Use admin dashboard.'
+                }, status=501)
         except SubAuthority.DoesNotExist:
             pass
         
-        # If none of the above worked, return invalid credentials
         return JsonResponse({'error': 'Invalid credentials'}, status=401)
-            
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON data'}, status=400)
     except Exception as e:
@@ -556,62 +489,45 @@ def api_login(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_logout(request):
-    """API logout endpoint"""
+    """API logout - revoke refresh token only. No session."""
     try:
-        # Get refresh token from request if provided
         data = json.loads(request.body) if request.body else {}
         refresh_token_value = data.get('refresh_token')
-        
-        # If refresh token is provided, revoke it
         if refresh_token_value:
             try:
                 refresh_token = RefreshToken.objects.get(token=refresh_token_value)
                 refresh_token.revoke()
             except RefreshToken.DoesNotExist:
-                pass  # Token doesn't exist, that's fine
-        
-        logout(request)
+                pass
         return JsonResponse({'success': True, 'message': 'Logged out successfully'})
     except Exception as e:
-        # Even if there's an error, we should still logout
-        logout(request)
         return JsonResponse({'success': True, 'message': 'Logged out successfully'})
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_refresh_token(request):
-    """API endpoint to refresh access token using refresh token"""
+    """Refresh token: validate old token, issue new token (rotate). Stateless."""
     try:
         data = json.loads(request.body)
         refresh_token_value = data.get('refresh_token')
-        
         if not refresh_token_value:
             return JsonResponse({'error': 'Refresh token is required'}, status=400)
-        
-        # Find and validate refresh token
         try:
-            refresh_token = RefreshToken.objects.get(token=refresh_token_value)
+            old_refresh = RefreshToken.objects.get(token=refresh_token_value)
         except RefreshToken.DoesNotExist:
             return JsonResponse({'error': 'Invalid refresh token'}, status=401)
-        
-        if not refresh_token.is_valid():
+        if not old_refresh.is_valid():
             return JsonResponse({'error': 'Refresh token has expired or been revoked'}, status=401)
-        
-        # Generate new access token
-        user = refresh_token.user
-        import hashlib
-        import time
-        token_string = f"{user.email}:{time.time()}:{user.id}"
-        token = hashlib.sha256(token_string.encode()).hexdigest()
-        
-        # Update last login time
+        user = old_refresh.user
+        old_refresh.revoke()
+        new_refresh = RefreshToken.generate_token(user)
         user.last_login_time = timezone.now()
         user.save()
-        
         return JsonResponse({
             'success': True,
             'message': 'Token refreshed successfully',
-            'token': token,
+            'token': new_refresh.token,
+            'refresh_token': new_refresh.token,
             'user': {
                 'id': user.id,
                 'email': user.email,
@@ -620,7 +536,6 @@ def api_refresh_token(request):
                 'role': user.role
             }
         })
-        
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON data'}, status=400)
     except Exception as e:
@@ -628,13 +543,10 @@ def api_refresh_token(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_official_details(request, official_id):
     """API endpoint to get detailed information about a specific official"""
     try:
-        # Check if user is authenticated and is admin
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         if request.user.role != 'admin':
             return JsonResponse({'error': 'Admin access required'}, status=403)
         
@@ -715,13 +627,10 @@ def api_get_official_details(request, official_id):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def api_update_official_permissions(request, official_id):
     """API endpoint to update permissions for a specific official"""
     try:
-        # Check if user is authenticated and is admin
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         if request.user.role != 'admin':
             return JsonResponse({'error': 'Admin access required'}, status=403)
         
@@ -761,18 +670,10 @@ def api_update_official_permissions(request, official_id):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_authority_team_members(request):
     """API endpoint to get team members created by the authenticated authority"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user is an authority
         authority_roles = ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch', 'other']
         if request.user.role not in authority_roles:
@@ -808,18 +709,10 @@ def api_get_authority_team_members(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_authority_sub_authorities(request):
     """API endpoint to get sub-authorities created by the authenticated authority"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user is an authority
         authority_roles = ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch', 'other']
         if request.user.role not in authority_roles:
@@ -860,13 +753,10 @@ def api_get_authority_sub_authorities(request):
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
+@token_required
 def api_remove_team_member(request, member_id):
     """API endpoint to remove a team member from database"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user is an authority
         authority_roles = ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch', 'other']
         if request.user.role not in authority_roles:
@@ -894,13 +784,10 @@ def api_remove_team_member(request, member_id):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_official_activity(request, official_id):
     """API endpoint to get activity data for a specific official"""
     try:
-        # Check if user is authenticated and is admin
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         if request.user.role != 'admin':
             return JsonResponse({'error': 'Admin access required'}, status=403)
         
@@ -965,13 +852,10 @@ def api_get_official_activity(request, official_id):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_officials(request):
     """API endpoint to get all officials (authorities) with their activity status"""
     try:
-        # Check if user is authenticated and is admin
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         if request.user.role != 'admin':
             return JsonResponse({'error': 'Admin access required'}, status=403)
         
@@ -1037,19 +921,20 @@ def api_get_officials(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_test_auth(request):
-    """Test endpoint to check authentication"""
+    """Test endpoint to check token authentication"""
     return JsonResponse({
-        'authenticated': request.user.is_authenticated,
-        'user': str(request.user) if request.user.is_authenticated else 'Anonymous',
-        'session_key': request.session.session_key,
-        'headers': dict(request.headers)
+        'authenticated': True,
+        'user': str(request.user),
+        'user_id': request.user.id,
+        'email': request.user.email,
     })
 
 @csrf_exempt
 @require_http_methods(["GET"])
 def api_get_csrf_token(request):
-    """API endpoint to get CSRF token"""
+    """API endpoint to get CSRF token (optional; APIs use Bearer token, no CSRF)."""
     try:
         csrf_token = get_token(request)
         return JsonResponse({
@@ -1061,15 +946,32 @@ def api_get_csrf_token(request):
             'error': f'Failed to get CSRF token: {str(e)}'
         }, status=500)
 
+
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
+def api_auth_me(request):
+    """Return current user from Bearer token. Used by frontend getCurrentUser."""
+    user = request.user
+    return JsonResponse({
+        'id': user.id,
+        'email': user.email,
+        'first_name': user.first_name or '',
+        'last_name': user.last_name or '',
+        'phone_number': user.phone_number or '',
+        'role': user.role,
+        'state': user.state or '',
+        'district': user.district or '',
+        'nagar_panchayat': user.nagar_panchayat or '',
+        'village': user.village or '',
+    })
+
+@csrf_exempt
+@require_http_methods(["GET"])
+@token_required
 def api_get_team_members(request):
     """API endpoint to get team members for the current authority"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can view team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1129,16 +1031,12 @@ def api_get_team_members(request):
             'error': f'Server error: {str(e)}'
         }, status=500)
 
-@login_required
 @csrf_exempt
 @require_http_methods(["PUT"])
+@token_required
 def api_update_team_member_permissions(request, member_id):
     """API endpoint to update team member permissions"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can manage team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1184,16 +1082,12 @@ def api_update_team_member_permissions(request, member_id):
             'error': f'Server error: {str(e)}'
         }, status=500)
 
-@login_required
 @csrf_exempt
 @require_http_methods(["DELETE"])
+@token_required
 def api_remove_team_member(request, member_id):
     """API endpoint to remove a team member"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can manage team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1227,16 +1121,12 @@ def api_remove_team_member(request, member_id):
 
 # New API endpoints for team and sub-authority management
 
-@login_required
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_team_members_new(request):
     """API endpoint to get team members for the current authority"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can view team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1283,13 +1173,10 @@ def api_get_team_members_new(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_sub_authorities(request):
     """API endpoint to get sub-authorities created by the current authority"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can view sub-authorities
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1331,16 +1218,12 @@ def api_get_sub_authorities(request):
             'error': f'Server error: {str(e)}'
         }, status=500)
 
-@login_required
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def api_add_team_member(request):
     """API endpoint to add a team member"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can manage team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1398,18 +1281,10 @@ def api_add_team_member(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def api_create_sub_authority(request):
     """API endpoint to create a sub-authority"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can create sub-authorities
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1453,21 +1328,12 @@ def api_create_sub_authority(request):
     except Exception as e:
         return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
 
-@login_required
 @csrf_exempt
 @require_http_methods(["DELETE"])
+@token_required
 def api_remove_team_member_new(request, team_member_id):
     """API endpoint to remove a team member"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can manage team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1493,13 +1359,10 @@ def api_remove_team_member_new(request, team_member_id):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_authority_info(request):
     """API endpoint to get current authority information including location"""
     try:
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user is an authority
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1549,18 +1412,10 @@ def api_get_authority_info(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def api_create_team_member(request):
     """API endpoint to create a team member"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can create team members
         if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1609,18 +1464,10 @@ def api_create_team_member(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+@token_required
 def api_create_sub_authority_team_member(request):
     """API endpoint to create a sub-authority team member"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can create sub-authority team members (district chairman, etc.)
         if request.user.role not in ['district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
             return JsonResponse({'error': 'Access denied. Only sub-authorities can create team members.'}, status=403)
@@ -1669,18 +1516,10 @@ def api_create_sub_authority_team_member(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@token_required
 def api_get_sub_authority_team_members(request):
     """API endpoint to get sub-authority team members"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can view sub-authority team members
         if request.user.role not in ['district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
             return JsonResponse({'error': 'Access denied'}, status=403)
@@ -1727,18 +1566,10 @@ def api_get_sub_authority_team_members(request):
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
+@token_required
 def api_remove_sub_authority_team_member(request, member_id):
     """API endpoint to remove a sub-authority team member"""
     try:
-        # Check if user is authenticated via session or token
-        if not request.user.is_authenticated:
-            # Try to authenticate via token if available
-            token_user = token_authenticate_user(request)
-            if token_user:
-                request.user = token_user
-            else:
-                return JsonResponse({'error': 'Authentication required'}, status=401)
-        
         # Check if user can remove sub-authority team members
         if request.user.role not in ['district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
             return JsonResponse({'error': 'Access denied'}, status=403)

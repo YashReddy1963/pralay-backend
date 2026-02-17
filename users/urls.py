@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/auth/login/', views.api_login, name='api_login'),
     path('api/auth/logout/', views.api_logout, name='api_logout'),
     path('api/auth/refresh/', views.api_refresh_token, name='api_refresh_token'),
+    path('api/auth/me/', views.api_auth_me, name='api_auth_me'),
     path('api/auth/csrf-token/', views.api_get_csrf_token, name='api_get_csrf_token'),
     path('api/test-auth/', views.api_test_auth, name='api_test_auth'),
     path('api/officials/', views.api_get_officials, name='api_get_officials'),
