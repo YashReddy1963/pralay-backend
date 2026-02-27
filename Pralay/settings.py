@@ -177,6 +177,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",  # Current frontend port
     "http://127.0.0.1:8081",
     "https://pralay-frontend.vercel.app",
+    "https://pralayapp.me",
+    "https://www.pralayapp.me",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -219,6 +221,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8081",
     "http://127.0.0.1:8081",
     "https://pralay-frontend.vercel.app",
+    "https://pralayapp.me",
+    "https://www.pralayapp.me",
 ]
 
 # Twilio Configuration

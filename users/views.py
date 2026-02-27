@@ -608,7 +608,7 @@ def api_get_official_details(request, official_id):
             'can_approve_reports': official.can_approve_reports,
             'can_manage_teams': official.can_manage_teams,
             'created_by': official.created_by.get_full_name() if official.created_by else 'System',
-            'service_card_proof': f'https://pralay-frontend.vercel.app{official.service_card_proof.url}' if official.service_card_proof else None,
+            'service_card_proof': request.build_absolute_uri{official.service_card_proof.url} if official.service_card_proof else None,
             'sub_authorities': sub_auth_data,
             'team_members': team_data,
             'sub_authorities_count': len(sub_auth_data),
@@ -905,7 +905,7 @@ def api_get_officials(request):
                 'can_approve_reports': official.can_approve_reports,
                 'can_manage_teams': official.can_manage_teams,
                 'created_by': official.created_by.get_full_name() if official.created_by else 'System',
-                'service_card_proof': f'https://pralay-frontend.vercel.app{official.service_card_proof.url}' if official.service_card_proof else None
+                'service_card_proof': request.build_absolute_uri{official.service_card_proof.url} if official.service_card_proof else None
             })
         
         return JsonResponse({
@@ -1152,7 +1152,7 @@ def api_get_team_members_new(request):
                 'village': team_member.village or '',
                 'address': team_member.address or '',
                 'government_service_id': team_member.government_service_id or '',
-                'document_proof': f'https://pralay-frontend.vercel.app{team_member.document_proof.url}' if team_member.document_proof else '',
+                'document_proof': request.build_absolute_uri{team_member.document_proof.url} if team_member.document_proof else '',
                 'can_view_reports': team_member.can_view_reports,
                 'can_approve_reports': team_member.can_approve_reports,
                 'can_manage_teams': team_member.can_manage_teams,
@@ -1312,7 +1312,7 @@ def api_create_sub_authority(request):
                 'phone_number': sub_authority.phone_number or '',
                 'government_service_id': sub_authority.government_service_id or '',
                 'custom_role': sub_authority.custom_role or '',
-                'document_proof': f'https://pralay-frontend.vercel.app{sub_authority.document_proof.url}' if sub_authority.document_proof else '',
+                'document_proof': request.build_absolute_uri{sub_authority.document_proof.url} if sub_authority.document_proof else '',
                 'can_view_reports': sub_authority.can_view_reports,
                 'can_approve_reports': sub_authority.can_approve_reports,
                 'can_manage_teams': sub_authority.can_manage_teams,
@@ -1443,7 +1443,7 @@ def api_create_team_member(request):
                 'phone_number': team_member.phone_number or '',
                 'government_service_id': team_member.government_service_id or '',
                 'designation': team_member.designation or '',
-                'document_proof': f'https://pralay-frontend.vercel.app{team_member.document_proof.url}' if team_member.document_proof else '',
+                'document_proof': request.build_absolute_uri{team_member.document_proof.url} if team_member.document_proof else '',
                 'can_view_reports': team_member.can_view_reports,
                 'can_approve_reports': team_member.can_approve_reports,
                 'can_manage_teams': team_member.can_manage_teams,
@@ -1495,7 +1495,7 @@ def api_create_sub_authority_team_member(request):
                 'phone_number': team_member.phone_number or '',
                 'government_service_id': team_member.government_service_id or '',
                 'designation': team_member.designation or '',
-                'document_proof': f'https://pralay-frontend.vercel.app{team_member.document_proof.url}' if team_member.document_proof else '',
+                'document_proof': request.build_absolute_uri{team_member.document_proof.url} if team_member.document_proof else '',
                 'can_view_reports': team_member.can_view_reports,
                 'can_approve_reports': team_member.can_approve_reports,
                 'can_manage_teams': team_member.can_manage_teams,
@@ -1543,7 +1543,7 @@ def api_get_sub_authority_team_members(request):
                 'phone_number': member.phone_number or '',
                 'government_service_id': member.government_service_id or '',
                 'designation': member.designation or '',
-                'document_proof': f'https://pralay-frontend.vercel.app{member.document_proof.url}' if member.document_proof else '',
+                'document_proof': request.build_absolute_uri{member.document_proof.url} if member.document_proof else '',
                 'can_view_reports': member.can_view_reports,
                 'can_approve_reports': member.can_approve_reports,
                 'can_manage_teams': member.can_manage_teams,
