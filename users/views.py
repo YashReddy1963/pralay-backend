@@ -213,8 +213,11 @@ def api_create_authority(request):
             # Log the form errors for debugging
             print(f"Form validation errors: {form.errors}")
             print(f"Form data received: {request.POST}")
-            return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
-            
+            return JsonResponse({
+                'error': 'Invalid form data',
+                'errors': form.errors.as_json()
+            }, status=400)
+
     except Exception as e:
         return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
 
