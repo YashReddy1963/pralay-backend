@@ -1286,9 +1286,9 @@ def api_add_team_member(request):
 def api_create_sub_authority(request):
     """API endpoint to create a sub-authority"""
     try:
-        # Check if user can create sub-authorities
-        if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
-            return JsonResponse({'error': 'Access denied'}, status=403)
+        # Only state chairman may create sub-authorities
+        if request.user.role != 'state_chairman':
+            return JsonResponse({'error': 'Access denied. Only State Chairman may create sub-authorities.'}, status=403)
         
         # Handle file upload with FormData
         form = SubAuthorityCreationForm(request.POST, request.FILES, creator=request.user)
@@ -1386,6 +1386,11 @@ def api_get_authority_info(request):
             'can_approve_reports': request.user.can_approve_reports,
             'can_manage_teams': request.user.can_manage_teams,
         }
+        # Capability flags for frontend
+        role = (request.user.role or '').strip().lower()
+        authority_data['can_create_sub_authority'] = True if role == 'state_chairman' else False
+        authority_data['can_create_team_member'] = True if role == 'state_chairman' else False
+        authority_data['can_create_sub_authority_team_member'] = True if role == 'district_chairman' else False
         
         # Add location display based on role
         location_parts = []
@@ -1417,18 +1422,19 @@ def api_get_authority_info(request):
 def api_create_team_member(request):
     """API endpoint to create a team member"""
     try:
-        # Check if user can create team members
-        if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
-            return JsonResponse({'error': 'Access denied'}, status=403)
+        # Only state chairman may create top-level team members
+        if request.user.role != 'state_chairman':
+            return JsonResponse({'error': 'Access denied. Only State Chairman may create team members.'}, status=403)
         
         # Handle file upload with FormData
         form = TeamMemberCreationForm(request.POST, request.FILES, authority=request.user)
         
         if not form.is_valid():
             return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
-        
-        # Create the new team member
-        team_member = form.save()
+        # Create the new team member and enforce authority=request.user
+        team_member = form.save(commit=False)
+        team_member.authority = request.user
+        team_member.save()
         
         response_data = {
             'success': True,
@@ -1469,18 +1475,22 @@ def api_create_team_member(request):
 def api_create_sub_authority_team_member(request):
     """API endpoint to create a sub-authority team member"""
     try:
-        # Check if user can create sub-authority team members (district chairman, etc.)
+        # Only district/nagar/village chairs may create sub-authority team members
         if request.user.role not in ['district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
-            return JsonResponse({'error': 'Access denied. Only sub-authorities can create team members.'}, status=403)
-        
-        # Handle file upload with FormData
+            return JsonResponse({'error': 'Access denied. Only district/nagar/village chairs may create subordinate team members.'}, status=403)
+
+        # Always treat the requesting user as the parent sub-authority; do NOT trust any frontend-provided parent id
+        # Handle file upload with FormData and enforce sub_authority=request.user
         form = SubAuthorityTeamMemberCreationForm(request.POST, request.FILES, sub_authority=request.user)
-        
+
         if not form.is_valid():
             return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
-        
-        # Create the new sub-authority team member
-        team_member = form.save()
+
+        # Create the new sub-authority team member and enforce sub_authority relation
+        team_member = form.save(commit=False)
+        # Ensure assigned parent is the requesting user
+        team_member.sub_authority = request.user
+        team_member.save()
         
         response_data = {
             'success': True,
