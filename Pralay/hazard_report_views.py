@@ -22,6 +22,98 @@ from users.authentication import TokenRequiredMixin
 
 logger = logging.getLogger(__name__)
 
+
+def user_can_access_report(user: CustomUser, report: OceanHazardReport) -> tuple[bool, str]:
+    """Return (True, '') if user is allowed to access the report, else (False, reason).
+
+    Rules:
+    - admin can access all
+    - state_chairman can access only reports with state __iexact user.state
+    - district_chairman can access only reports with district __iexact user.district
+    - others: no access (for update/delete)
+    """
+    try:
+        role = (user.role or '').lower()
+        if role == 'admin':
+            return True, ''
+
+        if role == 'state_chairman':
+            if not user.state:
+                reason = f"State not configured for user {user.email}"
+                logger.warning(reason)
+                return False, reason
+            report_state = (report.state or '').strip()
+            if report_state.lower() == user.state.strip().lower():
+                return True, ''
+            reason = f"Report {getattr(report, 'report_id', getattr(report, 'id', 'N/A'))} state '{report_state}' does not match user state '{user.state}'"
+            logger.warning(reason)
+            return False, reason
+
+        if role == 'district_chairman':
+            if not user.district:
+                reason = f"District not configured for user {user.email}"
+                logger.warning(reason)
+                return False, reason
+            report_district = (report.district or '').strip()
+            if report_district.lower() == user.district.strip().lower():
+                return True, ''
+            reason = f"Report {getattr(report, 'report_id', getattr(report, 'id', 'N/A'))} district '{report_district}' does not match user district '{user.district}'"
+            logger.warning(reason)
+            return False, reason
+
+        # Default deny
+        reason = f"User role '{user.role}' does not have access to manage reports"
+        logger.warning(reason)
+        return False, reason
+    except Exception as e:
+        logger.error(f"Error checking access for user {getattr(user, 'email', None)}: {e}")
+        return False, 'Internal access check failure'
+
+
+def restrict_reports_queryset(user: CustomUser, queryset):
+    """Restrict the given queryset according to the user's role and configured state/district.
+
+    Returns a strictly restricted queryset. Does NOT trust query params.
+    Logging includes user role/state/district and distinct states present after filtering.
+    """
+    try:
+        role = (user.role or '').strip().lower()
+        user_state = (user.state or '').strip()
+        user_district = (user.district or '').strip()
+
+        logger.info(f"restrict_reports_queryset: role='{role}', state='{user_state}', district='{user_district}' for user={getattr(user, 'email', None)}")
+
+        if role == 'admin':
+            # No restriction for admin
+            distinct_states = list(queryset.values_list('state', flat=True).distinct())
+            logger.info(f"restrict_reports_queryset: admin - distinct states in queryset: {distinct_states}")
+            return queryset
+
+        if role == 'state_chairman':
+            if not user_state:
+                logger.warning(f"restrict_reports_queryset: state_chairman {getattr(user, 'email', None)} has no state configured; returning empty queryset")
+                return queryset.none()
+            restricted = queryset.filter(state__iexact=user_state)
+            distinct_states = list(restricted.values_list('state', flat=True).distinct())
+            logger.info(f"restrict_reports_queryset: state_chairman restricted distinct states: {distinct_states}")
+            return restricted
+
+        if role == 'district_chairman':
+            if not user_district:
+                logger.warning(f"restrict_reports_queryset: district_chairman {getattr(user, 'email', None)} has no district configured; returning empty queryset")
+                return queryset.none()
+            restricted = queryset.filter(district__iexact=user_district)
+            distinct_states = list(restricted.values_list('state', flat=True).distinct())
+            logger.info(f"restrict_reports_queryset: district_chairman restricted distinct states: {distinct_states}")
+            return restricted
+
+        # All other roles should see nothing
+        logger.warning(f"restrict_reports_queryset: user role '{role}' is not permitted to view reports; returning empty queryset")
+        return queryset.none()
+    except Exception as e:
+        logger.error(f"Error in restrict_reports_queryset: {e}")
+        return queryset.none()
+
 @method_decorator(csrf_exempt, name='dispatch')
 class SubmitHazardReportView(TokenRequiredMixin, View):
     """API endpoint for submitting ocean hazard reports. Requires Bearer token."""
@@ -194,34 +286,57 @@ class SubmitHazardReportView(TokenRequiredMixin, View):
 @method_decorator(csrf_exempt, name='dispatch')
 class GetHazardReportsView(TokenRequiredMixin, View):
     """API endpoint for retrieving hazard reports. Requires Bearer token."""
-    
+
     def get(self, request):
         try:
+            user = request.user
+
+            logger.error("==== AUTH DEBUG ====")
+            logger.error(f"user.id = {request.user.id}")
+            logger.error(f"user.email = {request.user.email}")
+            logger.error(f"user.role = {request.user.role}")
+            logger.error(f"user.state = {request.user.state}")
+            logger.error(f"user.district = {request.user.district}")
+            logger.error("====================")
+
+
             status = request.GET.get('status')
             hazard_type = request.GET.get('hazard_type')
-            state = request.GET.get('state')
-            district = request.GET.get('district')
             user_reports = request.GET.get('user_reports', '').lower() == 'true'
             limit = int(request.GET.get('limit', 50))
-            
-            reports_query = OceanHazardReport.objects.select_related('reported_by', 'reviewed_by').prefetch_related('hazard_images')
-            
+
+            reports_query = OceanHazardReport.objects.select_related(
+                'reported_by', 'reviewed_by'
+            ).prefetch_related('hazard_images')
+
+            # Enforce strict role-based restriction at queryset level
+            reports_query = restrict_reports_queryset(user, reports_query)
+
+            # Apply user_reports filter (still respects role restriction)
             if user_reports:
-                reports_query = reports_query.filter(reported_by=request.user)
-            
+                reports_query = reports_query.filter(reported_by=user)
+
+            # Safe optional filters applied AFTER role restriction
             if status:
                 reports_query = reports_query.filter(status=status)
             if hazard_type:
                 reports_query = reports_query.filter(hazard_type=hazard_type)
-            if state:
-                reports_query = reports_query.filter(state__icontains=state)
-            if district:
-                reports_query = reports_query.filter(district__icontains=district)
-            
+
             reports = reports_query.order_by('-reported_at')[:limit]
-            
+
             reports_data = []
+
             for report in reports:
+                # Double-check per-report access as a final guard: if the
+                # restrict_reports_queryset had any blind spots (eg. malformed
+                # or missing state/district values), skip any report that the
+                # current user should not access. This is a defensive safety
+                # net to guarantee no out-of-jurisdiction report leaks.
+                allowed, reason = user_can_access_report(user, report)
+                if not allowed:
+                    logger.warning(f"GetHazardReportsView: skipping report {getattr(report,'report_id',report.id)} - access denied: {reason}")
+                    continue
+
                 reports_data.append({
                     'id': report.id,
                     'report_id': report.report_id,
@@ -266,13 +381,13 @@ class GetHazardReportsView(TokenRequiredMixin, View):
                         for img in report.hazard_images.all()
                     ]
                 })
-            
+
             return JsonResponse({
                 'success': True,
                 'count': len(reports_data),
                 'reports': reports_data
             })
-            
+
         except Exception as e:
             logger.error(f"Error retrieving hazard reports: {e}")
             return JsonResponse({
@@ -306,6 +421,14 @@ class UpdateHazardReportStatusView(TokenRequiredMixin, View):
                     'success': False,
                     'message': 'Report not found'
                 }, status=404)
+            # Enforce role-based access for the report
+            allowed, reason = user_can_access_report(request.user, report)
+            if not allowed:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Access denied',
+                    'reason': reason
+                }, status=403)
             
             # Update report status
             report.status = new_status
@@ -404,6 +527,16 @@ class BulkUpdateHazardReportsView(TokenRequiredMixin, View):
             for report_id in report_ids:
                 try:
                     report = OceanHazardReport.objects.get(report_id=report_id)
+                    # Enforce role-based access: reject entire request if any report is outside scope
+                    allowed, reason = user_can_access_report(request.user, report)
+                    if not allowed:
+                        logger.warning(f"Bulk update blocked: {reason}")
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'Access denied for one or more reports',
+                            'reason': reason,
+                            'offending_report': report_id
+                        }, status=403)
                     report.status = new_status
                     report.review_notes = review_notes
                     report.reviewed_at = datetime.now()
@@ -499,6 +632,16 @@ class BulkDeleteHazardReportsView(TokenRequiredMixin, View):
             for report_id in report_ids:
                 try:
                     report = OceanHazardReport.objects.get(report_id=report_id)
+                    # Enforce role-based access: reject entire request if any report is outside scope
+                    allowed, reason = user_can_access_report(request.user, report)
+                    if not allowed:
+                        logger.warning(f"Bulk delete blocked: {reason}")
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'Access denied for one or more reports',
+                            'reason': reason,
+                            'offending_report': report_id
+                        }, status=403)
                     report.delete()
                     deleted_count += 1
                 except OceanHazardReport.DoesNotExist:
@@ -532,8 +675,17 @@ class DeleteHazardReportView(TokenRequiredMixin, View):
         try:
             try:
                 report = OceanHazardReport.objects.get(report_id=report_id)
+                allowed, reason = user_can_access_report(request.user, report)
+                if not allowed:
+                    logger.warning(f"Delete blocked: {reason}")
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Access denied',
+                        'reason': reason
+                    }, status=403)
+
                 report.delete()
-                
+
                 return JsonResponse({
                     'success': True,
                     'message': f'Report {report_id} deleted successfully'
@@ -724,11 +876,23 @@ class GetMapHazardReportsView(TokenRequiredMixin, View):
             reports_query = OceanHazardReport.objects.select_related('reported_by', 'reviewed_by').prefetch_related('hazard_images')
             
             if request.user.role == 'district_chairman':
-                if request.user.district:
-                    reports_query = reports_query.filter(district__icontains=request.user.district)
-                    logger.info(f"Filtering reports for district chairman: {request.user.district}")
-                else:
+                if not request.user.district:
                     logger.warning(f"District chairman {request.user.email} has no district set")
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'District not configured for this user'
+                    }, status=403)
+                reports_query = reports_query.filter(district__iexact=request.user.district)
+                logger.info(f"Filtering reports for district chairman (iexact): {request.user.district}")
+            elif request.user.role == 'state_chairman':
+                if not request.user.state:
+                    logger.warning(f"State chairman {request.user.email} has no state set")
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'State not configured for this user'
+                    }, status=403)
+                reports_query = reports_query.filter(state__iexact=request.user.state)
+                logger.info(f"Filtering reports for state chairman (iexact): {request.user.state}")
             
             # Apply other filters
             if status:
@@ -759,6 +923,12 @@ class GetMapHazardReportsView(TokenRequiredMixin, View):
                         'ai_confidence_score': img.ai_confidence_score,
                     })
                 
+                # Final per-report access guard (defensive)
+                allowed, reason = user_can_access_report(request.user, report)
+                if not allowed:
+                    logger.warning(f"GetMapHazardReportsView: skipping report {getattr(report,'report_id',report.id)} - access denied: {reason}")
+                    continue
+
                 reports_data.append({
                             'id': report.id,
                             'report_id': report.report_id,
