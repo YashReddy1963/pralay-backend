@@ -18,6 +18,7 @@ from .email_service import EmailService
 from .forms import CustomUserCreationForm, CustomAuthenticationForm, AuthorityCreationForm, TeamMemberForm, SubAuthorityForm, SubAuthorityCreationForm, TeamMemberCreationForm, SubAuthorityTeamMemberCreationForm
 from .models import CustomUser, OTP, TeamMember, SubAuthority, SubAuthorityTeamMember, RefreshToken
 from .authentication import token_required
+from ai_verification_service import verify_image_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -1710,3 +1711,29 @@ def api_remove_sub_authority_team_member(request, member_id):
         return JsonResponse({
             'error': f'Server error: {str(e)}'
         }, status=500)
+
+
+# AI-Verification service
+@csrf_exempt
+@require_http_methods(["POST"])
+@token_required
+def api_verify_image(request):
+    try:
+        image = request.FILES.get("image")
+        hazard_type = request.POST.get("hazard_type")
+        description = request.POST.get("description", "")
+
+        if not image:
+            return JsonResponse({"error": "No image provided"}, status=400)
+
+        result = verify_image_endpoint(
+            image_data=image.read(),
+            hazard_type=hazard_type,
+            description=description,
+            filename=image.name
+        )
+
+        return JsonResponse(result)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
