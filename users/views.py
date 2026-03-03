@@ -1286,8 +1286,8 @@ def api_add_team_member(request):
 def api_create_sub_authority(request):
     """API endpoint to create a sub-authority"""
     try:
-        # Check if user can create sub-authorities
-        if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
+        # Check if user can create sub-authorities (only state-level or admin)
+        if request.user.role not in ['admin', 'state_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
         
         # Handle file upload with FormData
@@ -1381,7 +1381,10 @@ def api_get_authority_info(request):
             'nagar_panchayat': request.user.nagar_panchayat or '',
             'village': request.user.village or '',
             'current_designation': request.user.current_designation or '',
-            'authority_level': request.user.authority_level or '',
+            # capability flags indicate what this authority can do (backend-enforced)
+            'can_create_sub_authority': True if request.user.role == 'state_chairman' else False,
+            'can_create_team_member': True if request.user.role == 'state_chairman' else False,
+            'can_create_sub_authority_team_member': True if request.user.role == 'district_chairman' else False,
             'can_view_reports': request.user.can_view_reports,
             'can_approve_reports': request.user.can_approve_reports,
             'can_manage_teams': request.user.can_manage_teams,
@@ -1417,8 +1420,8 @@ def api_get_authority_info(request):
 def api_create_team_member(request):
     """API endpoint to create a team member"""
     try:
-        # Check if user can create team members
-        if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
+        # Check if user can create team members (only state-level or admin)
+        if request.user.role not in ['admin', 'state_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
         
         # Handle file upload with FormData
