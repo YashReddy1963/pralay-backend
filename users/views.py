@@ -773,30 +773,27 @@ def api_get_authority_sub_authorities(request):
 @require_http_methods(["DELETE"])
 @token_required
 def api_remove_team_member(request, member_id):
-    """API endpoint to remove a team member from database"""
     try:
-        # Check if user is an authority
-        authority_roles = ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch', 'other']
-        if request.user.role not in authority_roles:
-            return JsonResponse({'error': 'Authority access required'}, status=403)
-        
-        # Get the team member
+        if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
+            return JsonResponse({'error': 'Access denied'}, status=403)
+
         try:
-            team_member = TeamMember.objects.get(id=member_id, authority=request.user)
+            team_member = TeamMember.objects.get(
+                id=member_id,
+                authority=request.user
+            )
         except TeamMember.DoesNotExist:
-            return JsonResponse({'error': 'Team member not found or you do not have permission to remove this member'}, status=404)
-        
-        # Store member info for response
-        member_name = f"{team_member.first_name} {team_member.last_name}"
-        
-        # Delete the team member
+            return JsonResponse({
+                'error': 'Team member not found or you do not have permission'
+            }, status=404)
+
         team_member.delete()
-        
+
         return JsonResponse({
             'success': True,
-            'message': f'Team member {member_name} has been removed successfully'
+            'message': 'Team member removed successfully'
         })
-        
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -1193,42 +1190,6 @@ def api_update_team_member_permissions(request, member_id):
             'error': f'Server error: {str(e)}'
         }, status=500)
 
-@csrf_exempt
-@require_http_methods(["DELETE"])
-@token_required
-def api_remove_team_member(request, member_id):
-    """API endpoint to remove a team member"""
-    try:
-        # Check if user can manage team members
-        if request.user.role not in ['admin', 'state_chairman', 'district_chairman']:
-            return JsonResponse({'error': 'Access denied'}, status=403)
-        
-        # Get the team member
-        try:
-            member = CustomUser.objects.get(id=member_id)
-        except CustomUser.DoesNotExist:
-            return JsonResponse({'error': 'Team member not found'}, status=404)
-        
-        # Check if user can manage this specific member
-        if not request.user.can_access_user(member):
-            return JsonResponse({'error': 'Access denied to this team member'}, status=403)
-        
-        # Don't allow deleting admin users
-        if member.role == 'admin':
-            return JsonResponse({'error': 'Cannot delete admin users'}, status=403)
-        
-        # Delete the member
-        member.delete()
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Team member removed successfully'
-        })
-        
-    except Exception as e:
-        return JsonResponse({
-            'error': f'Server error: {str(e)}'
-        }, status=500)
 
 # New API endpoints for team and sub-authority management
 
