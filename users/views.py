@@ -536,7 +536,7 @@ def api_refresh_token(request):
             return JsonResponse({'error': 'Invalid refresh token'}, status=401)
         if not old_refresh.is_valid():
             return JsonResponse({'error': 'Refresh token has expired or been revoked'}, status=401)
-        user = old_refresh.account
+        user = old_refresh.user
         old_refresh.revoke()
         new_refresh = RefreshToken.generate_token(user)
         user.last_login_time = timezone.now()

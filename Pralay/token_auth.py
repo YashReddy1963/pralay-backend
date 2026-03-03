@@ -38,7 +38,7 @@ def token_authenticate_user(request):
         ).first()
 
         if refresh_token and refresh_token.is_valid():
-            return refresh_token.account
+            return refresh_token.user
     except Exception as e:
         logger.warning("Token authentication error: %s", e)
 
