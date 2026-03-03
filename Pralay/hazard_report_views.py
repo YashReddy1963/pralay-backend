@@ -308,14 +308,14 @@ class GetHazardReportsView(TokenRequiredMixin, View):
             reports_query = OceanHazardReport.objects.select_related(
                 'reported_by', 'reviewed_by'
             ).prefetch_related('hazard_images')
-
-            # Enforce strict role-based restriction at queryset level
-            reports_query = restrict_reports_queryset(user, reports_query)
-
-            # Apply user_reports filter (still respects role restriction)
+            
+            # If citizen requesting their own reports,
+            # bypass jurisdiction restriction
             if user_reports:
                 reports_query = reports_query.filter(reported_by=user)
-
+            else:
+                reports_query = restrict_reports_queryset(user, reports_query)
+            
             # Safe optional filters applied AFTER role restriction
             if status:
                 reports_query = reports_query.filter(status=status)
