@@ -252,10 +252,15 @@ class SubmitHazardReportView(TokenRequiredMixin, View):
                     'individual_results': verification_results
                 }
                 
-                # Auto-verify if all images are verified and confidence is high
-                if verified_images == total_images and overall_confidence > 0.8:
-                    hazard_report.is_verified = True
-                    hazard_report.status = 'verified'
+                # Do NOT auto-mark the report as fully verified by authorities.
+                # The AI verification step should only populate AI-related
+                # fields and optionally recommend verification to a human
+                # official. Leave `status` as 'pending' and `is_verified`
+                # False so that a district/state chairman can perform the
+                # authoritative verification.
+                hazard_report.ai_verification_details['auto_verified_recommended'] = (
+                    verified_images == total_images and overall_confidence > 0.8
+                )
                 
                 hazard_report.save()
             
