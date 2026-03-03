@@ -3,6 +3,8 @@ from django.db import models
 from django.utils import timezone
 import random
 import string
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 
 class CustomUser(AbstractUser):
     ROLE_CHOICES = [
@@ -285,45 +287,49 @@ class SubAuthority(models.Model):
         return f"{self.get_full_name()} - Sub-authority of {self.creator.get_full_name()}"
 
 class RefreshToken(models.Model):
-    """Model for storing refresh tokens"""
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='refresh_tokens')
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    account = GenericForeignKey('content_type', 'object_id')
+
     token = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_revoked = models.BooleanField(default=False)
-    
+
     @classmethod
-    def generate_token(cls, user):
-        """Generate a new refresh token for the user"""
+    def generate_token(cls, account):
         import secrets
         import hashlib
-        
-        # Delete any existing tokens for this user
-        cls.objects.filter(user=user).delete()
-        
-        # Generate a secure random token
-        token_string = f"{user.email}:{timezone.now().timestamp()}:{secrets.token_urlsafe(32)}"
+        from django.utils import timezone
+
+        content_type = ContentType.objects.get_for_model(account)
+
+        # Delete existing tokens for this account
+        cls.objects.filter(
+            content_type=content_type,
+            object_id=account.id
+        ).delete()
+
+        token_string = f"{account.email}:{timezone.now().timestamp()}:{secrets.token_urlsafe(32)}"
         token = hashlib.sha256(token_string.encode()).hexdigest()
-        
-        # Create new refresh token with 30 days expiry
-        refresh_token = cls.objects.create(
-            user=user,
+
+        return cls.objects.create(
+            content_type=content_type,
+            object_id=account.id,
             token=token,
             expires_at=timezone.now() + timezone.timedelta(days=30)
         )
-        return refresh_token
-    
+
     def is_valid(self):
-        """Check if the refresh token is still valid"""
+        from django.utils import timezone
         return not self.is_revoked and timezone.now() < self.expires_at
-    
+
     def revoke(self):
-        """Revoke the refresh token"""
         self.is_revoked = True
         self.save()
-    
+
     def __str__(self):
-        return f"Refresh token for {self.user.email}"
+        return f"Refresh token for {self.account.email}"
 
 class OceanHazardReport(models.Model):
     """Model for storing ocean hazard reports submitted by citizens"""
