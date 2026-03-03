@@ -142,14 +142,31 @@ class SubmitHazardReportView(TokenRequiredMixin, View):
             user = request.user
             logger.info(f"SubmitHazardReportView: User {user.id} ({user.email}) submitting report")
             
-            # Extract location information
+            # Extract and normalize location information
             latitude = Decimal(str(location_data.get('latitude', 0)))
             longitude = Decimal(str(location_data.get('longitude', 0)))
             country = location_data.get('country', 'Unknown')
-            state = location_data.get('state', 'Unknown')
-            district = location_data.get('district', 'Unknown')
+            state = (location_data.get('state') or 'Unknown')
+            district = (location_data.get('district') or 'Unknown')
             city = location_data.get('city', 'Unknown')
             address = location_data.get('address', '')
+
+            # Normalize district/state names: remove trailing words like 'district' or 'state'
+            # Example: input 'North Goa district' -> 'North Goa'
+            try:
+                import re
+
+                def _strip_trailing_word(name: str, word: str) -> str:
+                    if not name:
+                        return name
+                    return re.sub(rf"\s*{re.escape(word)}\s*$", "", name, flags=re.IGNORECASE).strip()
+
+                district = _strip_trailing_word(str(district), 'district')
+                state = _strip_trailing_word(str(state), 'state')
+            except Exception:
+                # In the unlikely event regex fails, fall back to simple stripping
+                district = str(district).strip()
+                state = str(state).strip()
             
             # Debug logging
             logger.info(f"Received hazard report data:")
