@@ -36,6 +36,12 @@ def user_can_access_report(user: CustomUser, report: OceanHazardReport) -> tuple
         role = (user.role or '').lower()
         if role == 'admin':
             return True, ''
+    
+        # Citizens can access their own reports
+        if role == 'user':
+            if report.reported_by_id == user.id:
+                return True, ''
+            return False, 'Users can only access their own reports'
 
         if role == 'state_chairman':
             if not user.state:
