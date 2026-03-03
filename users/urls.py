@@ -53,6 +53,7 @@ urlpatterns = [
     path('api/sub-authority/team-members/', views.api_get_sub_authority_team_members, name='api_get_sub_authority_team_members'),
     path('api/sub-authority/create-team-member/', views.api_create_sub_authority_team_member, name='api_create_sub_authority_team_member'),
     path('api/sub-authority/team-members/<int:member_id>/remove/', views.api_remove_sub_authority_team_member, name='api_remove_sub_authority_team_member'),
+    path('api/sub-authority/team-members/<int:member_id>/update/', views.api_update_sub_authority_team_member, name='api_update_sub_authority_team_member'),
 
     # AI Verification API endpoint
     path('api/verify-image/', views.api_verify_image, name='api_verify_image'),

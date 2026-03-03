@@ -890,6 +890,99 @@ def api_update_team_member(request, member_id):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+@csrf_exempt
+@require_http_methods(["PUT", "POST"])
+@token_required
+def api_update_sub_authority_team_member(request, member_id):
+    """API endpoint to update a sub-authority team member's editable fields
+    Supports updating: designation, phone_number, address, government_service_id,
+    can_view_reports, can_approve_reports, can_manage_teams, and optionally document_proof.
+    Accepts JSON body or multipart/form-data (for file upload).
+    """
+    try:
+        # Only district-level roles can update sub-authority team members
+        allowed_roles = ['district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']
+        if request.user.role not in allowed_roles and request.user.role != 'admin':
+            return JsonResponse({'error': 'Access denied'}, status=403)
+
+        # Retrieve the member ensuring it belongs to the sub_authority (request.user)
+        try:
+            member = SubAuthorityTeamMember.objects.get(id=member_id, sub_authority=request.user)
+        except SubAuthorityTeamMember.DoesNotExist:
+            return JsonResponse({'error': 'Team member not found or you do not have permission to update this member'}, status=404)
+
+        # Support multipart form (file upload) or JSON
+        data = {}
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            data = request.POST
+            files = request.FILES
+        else:
+            try:
+                data = json.loads(request.body) if request.body else {}
+            except Exception:
+                data = {}
+            files = {}
+
+        # Update allowed fields
+        if 'designation' in data:
+            member.designation = data.get('designation')
+        if 'phone_number' in data:
+            member.phone_number = data.get('phone_number')
+        if 'address' in data:
+            member.address = data.get('address')
+        if 'government_service_id' in data:
+            member.government_service_id = data.get('government_service_id')
+
+        # Permissions (ensure boolean conversion)
+        if 'can_view_reports' in data:
+            member.can_view_reports = str(data.get('can_view_reports')).lower() in ['true', '1', 'yes']
+        if 'can_approve_reports' in data:
+            member.can_approve_reports = str(data.get('can_approve_reports')).lower() in ['true', '1', 'yes']
+        if 'can_manage_teams' in data:
+            member.can_manage_teams = str(data.get('can_manage_teams')).lower() in ['true', '1', 'yes']
+
+        # Handle document_proof upload
+        if files and 'document_proof' in files:
+            member.document_proof = files['document_proof']
+
+        member.save()
+
+        # Build response data
+        doc_url = None
+        try:
+            if member.document_proof:
+                doc_url = request.build_absolute_uri(member.document_proof.url)
+        except Exception:
+            doc_url = None
+
+        resp = {
+            'id': member.id,
+            'first_name': member.first_name,
+            'middle_name': member.middle_name,
+            'last_name': member.last_name,
+            'email': member.email,
+            'phone_number': member.phone_number,
+            'designation': member.designation,
+            'state': member.state or '',
+            'district': member.district or '',
+            'nagar_panchayat': member.nagar_panchayat or '',
+            'village': member.village or '',
+            'address': member.address or '',
+            'government_service_id': member.government_service_id or '',
+            'document_proof': doc_url,
+            'assigned_date': member.assigned_date.isoformat() if member.assigned_date else None,
+            'can_view_reports': member.can_view_reports,
+            'can_approve_reports': member.can_approve_reports,
+            'can_manage_teams': member.can_manage_teams,
+            'is_active': member.is_active
+        }
+
+        return JsonResponse({'success': True, 'sub_authority_team_member': resp})
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 @csrf_exempt
 @require_http_methods(["GET"])
 @token_required
