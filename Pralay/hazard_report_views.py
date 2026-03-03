@@ -365,6 +365,39 @@ class GetHazardReportsView(TokenRequiredMixin, View):
                     logger.warning(f"GetHazardReportsView: skipping report {getattr(report,'report_id',report.id)} - access denied: {reason}")
                     continue
 
+                # Serialize images with storage existence check to avoid returning
+                # URLs that will 500 when the file is missing on disk (common on
+                # ephemeral hosts). Log missing files for later cleanup/migration.
+                images_qs = report.hazard_images.all()
+                images_list = []
+                try:
+                    from django.core.files.storage import default_storage
+                    for img in images_qs:
+                        file_name = getattr(img.image_file, 'name', None)
+                        image_url = None
+                        if file_name and default_storage.exists(file_name):
+                            try:
+                                image_url = request.build_absolute_uri(img.image_file.url)
+                            except Exception:
+                                logger.exception(f"Failed to build absolute URL for image id={img.id} name={file_name}")
+                                image_url = None
+                        else:
+                            logger.warning(f"Missing hazard image file on storage: id={img.id} name={file_name}")
+
+                        images_list.append({
+                            'id': img.id,
+                            'image_type': img.image_type,
+                            'caption': img.caption,
+                            'is_verified_by_ai': img.is_verified_by_ai,
+                            'ai_confidence_score': img.ai_confidence_score,
+                            'uploaded_at': img.uploaded_at.isoformat() if img.uploaded_at else None,
+                           'image_url': image_url,
+                           # Duplicate key for frontend compatibility (some clients expect `url`)
+                           'url': image_url
+                        })
+                except Exception:
+                    logger.exception("Unexpected error while serializing hazard images")
+
                 reports_data.append({
                     'id': report.id,
                     'report_id': report.report_id,
@@ -396,19 +429,8 @@ class GetHazardReportsView(TokenRequiredMixin, View):
                     'reported_at': report.reported_at.isoformat(),
                     'reviewed_at': report.reviewed_at.isoformat() if report.reviewed_at else None,
                     'ai_verification_score': report.ai_verification_score,
-                    'images_count': report.hazard_images.count(),
-                    'images': [
-                        {
-                            'id': img.id,
-                            'image_type': img.image_type,
-                            'caption': img.caption,
-                            'is_verified_by_ai': img.is_verified_by_ai,
-                            'ai_confidence_score': img.ai_confidence_score,
-                            'uploaded_at': img.uploaded_at.isoformat(),
-                            'image_url': request.build_absolute_uri(img.image_file.url) if img.image_file else None
-                        }
-                        for img in report.hazard_images.all()
-                    ]
+                    'images_count': images_qs.count(),
+                    'images': images_list
                 })
 
             return JsonResponse({
