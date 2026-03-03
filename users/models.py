@@ -345,6 +345,10 @@ class OceanHazardReport(models.Model):
         ('pollution', 'Water Pollution'),
         ('erosion', 'Coastal Erosion'),
         ('wildlife', 'Marine Wildlife Issue'),
+        ('water_disaster','Water Disaster'),
+        ('oil_spill','Oil Spill'),
+        ('cora_bleaching','Coral Bleaching'),
+        ('normal','Normal Condition'),
         ('other', 'Other Hazard'),
     ]
     
