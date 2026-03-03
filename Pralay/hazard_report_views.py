@@ -387,7 +387,8 @@ class GetHazardReportsView(TokenRequiredMixin, View):
                             'caption': img.caption,
                             'is_verified_by_ai': img.is_verified_by_ai,
                             'ai_confidence_score': img.ai_confidence_score,
-                            'uploaded_at': img.uploaded_at.isoformat()
+                            'uploaded_at': img.uploaded_at.isoformat(),
+                            'image_url': request.build_absolute_uri(img.image_file.url) if img.image_file else None
                         }
                         for img in report.hazard_images.all()
                     ]
