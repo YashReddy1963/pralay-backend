@@ -685,9 +685,18 @@ def api_get_authority_team_members(request):
         
         team_members_data = []
         for member in team_members:
+            # Build absolute URL for document_proof if present
+            doc_url = None
+            try:
+                if member.document_proof:
+                    doc_url = request.build_absolute_uri(member.document_proof.url)
+            except Exception:
+                doc_url = None
+
             team_members_data.append({
                 'id': member.id,
                 'first_name': member.first_name,
+                'middle_name': member.middle_name,
                 'last_name': member.last_name,
                 'email': member.email,
                 'phone_number': member.phone_number,
@@ -698,7 +707,8 @@ def api_get_authority_team_members(request):
                 'village': member.village or '',
                 'address': member.address or '',
                 'government_service_id': member.government_service_id or '',
-                'assigned_date': member.assigned_date.isoformat(),
+                'document_proof': doc_url,
+                'assigned_date': member.assigned_date.isoformat() if member.assigned_date else None,
                 'can_view_reports': member.can_view_reports,
                 'can_approve_reports': member.can_approve_reports,
                 'can_manage_teams': member.can_manage_teams,
@@ -786,6 +796,99 @@ def api_remove_team_member(request, member_id):
             'message': f'Team member {member_name} has been removed successfully'
         })
         
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["PUT", "POST"])
+@token_required
+def api_update_team_member(request, member_id):
+    """API endpoint to update a team member's editable fields
+    Supports updating: designation, phone_number, address, government_service_id,
+    can_view_reports, can_approve_reports, can_manage_teams, and optionally document_proof.
+    Accepts JSON body or multipart/form-data (for file upload).
+    """
+    try:
+        # Check if user is an authority
+        authority_roles = ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch', 'other', 'admin']
+        if request.user.role not in authority_roles:
+            return JsonResponse({'error': 'Authority access required'}, status=403)
+
+        # Retrieve the team member and ensure they belong to this authority
+        try:
+            team_member = TeamMember.objects.get(id=member_id, authority=request.user)
+        except TeamMember.DoesNotExist:
+            return JsonResponse({'error': 'Team member not found or you do not have permission to update this member'}, status=404)
+
+        # Support multipart form (file upload) or JSON
+        data = {}
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            data = request.POST
+            files = request.FILES
+        else:
+            try:
+                data = json.loads(request.body) if request.body else {}
+            except Exception:
+                data = {}
+            files = {}
+
+        # Update allowed fields
+        if 'designation' in data:
+            team_member.designation = data.get('designation')
+        if 'phone_number' in data:
+            team_member.phone_number = data.get('phone_number')
+        if 'address' in data:
+            team_member.address = data.get('address')
+        if 'government_service_id' in data:
+            team_member.government_service_id = data.get('government_service_id')
+
+        # Permissions (ensure boolean conversion)
+        if 'can_view_reports' in data:
+            team_member.can_view_reports = str(data.get('can_view_reports')).lower() in ['true', '1', 'yes']
+        if 'can_approve_reports' in data:
+            team_member.can_approve_reports = str(data.get('can_approve_reports')).lower() in ['true', '1', 'yes']
+        if 'can_manage_teams' in data:
+            team_member.can_manage_teams = str(data.get('can_manage_teams')).lower() in ['true', '1', 'yes']
+
+        # Handle document_proof upload
+        if files and 'document_proof' in files:
+            team_member.document_proof = files['document_proof']
+
+        team_member.save()
+
+        # Build response similar to GET
+        doc_url = None
+        try:
+            if team_member.document_proof:
+                doc_url = request.build_absolute_uri(team_member.document_proof.url)
+        except Exception:
+            doc_url = None
+
+        resp = {
+            'id': team_member.id,
+            'first_name': team_member.first_name,
+            'middle_name': team_member.middle_name,
+            'last_name': team_member.last_name,
+            'email': team_member.email,
+            'phone_number': team_member.phone_number,
+            'designation': team_member.designation,
+            'state': team_member.state or '',
+            'district': team_member.district or '',
+            'nagar_panchayat': team_member.nagar_panchayat or '',
+            'village': team_member.village or '',
+            'address': team_member.address or '',
+            'government_service_id': team_member.government_service_id or '',
+            'document_proof': doc_url,
+            'assigned_date': team_member.assigned_date.isoformat() if team_member.assigned_date else None,
+            'can_view_reports': team_member.can_view_reports,
+            'can_approve_reports': team_member.can_approve_reports,
+            'can_manage_teams': team_member.can_manage_teams,
+            'is_active': team_member.is_active
+        }
+
+        return JsonResponse({'success': True, 'team_member': resp})
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -1182,48 +1285,46 @@ def api_get_team_members_new(request):
 @require_http_methods(["GET"])
 @token_required
 def api_get_sub_authorities(request):
-    """API endpoint to get sub-authorities created by the current authority"""
     try:
-        # Check if user can view sub-authorities
-        if request.user.role not in ['admin', 'state_chairman', 'district_chairman', 'nagar_panchayat_chairman']:
+        if request.user.role not in ['admin', 'state_chairman']:
             return JsonResponse({'error': 'Access denied'}, status=403)
-        
-        # Get sub-authorities
+
         sub_authorities = SubAuthority.objects.filter(
             creator=request.user,
             is_active=True
-        ).select_related('sub_authority')
-        
-        # Convert to list of dictionaries
-        sub_auth_data = []
-        for sub_auth in sub_authorities:
-            auth = sub_auth.sub_authority
-            sub_auth_data.append({
-                'id': sub_auth.id,
-                'authority_id': auth.id,
-                'first_name': auth.first_name,
-                'last_name': auth.last_name,
-                'email': auth.email,
-                'phone_number': auth.phone_number,
-                'role': auth.role,
-                'custom_role': auth.custom_role or '',
-                'state': auth.state or '',
-                'district': auth.district or '',
-                'nagar_panchayat': auth.nagar_panchayat or '',
-                'village': auth.village or '',
-                'current_designation': auth.current_designation or '',
-                'created_date': sub_auth.created_date.isoformat(),
+        ).order_by('-created_date')
+
+        data = []
+        for sa in sub_authorities:
+            data.append({
+                'id': sa.id,
+                'first_name': sa.first_name,
+                'middle_name': sa.middle_name,
+                'last_name': sa.last_name,
+                'email': sa.email,
+                'phone_number': sa.phone_number,
+                'role': sa.role,
+                'custom_role': sa.custom_role,
+                'state': sa.state,
+                'district': sa.district,
+                'nagar_panchayat': sa.nagar_panchayat,
+                'village': sa.village,
+                'address': sa.address,
+                'government_service_id': sa.government_service_id,
+                'can_view_reports': sa.can_view_reports,
+                'can_approve_reports': sa.can_approve_reports,
+                'can_manage_teams': sa.can_manage_teams,
+                'created_date': sa.created_date.isoformat(),
+                'is_active': sa.is_active,
             })
-        
+
         return JsonResponse({
             'success': True,
-            'sub_authorities': sub_auth_data
+            'sub_authorities': data
         })
-        
+
     except Exception as e:
-        return JsonResponse({
-            'error': f'Server error: {str(e)}'
-        }, status=500)
+        return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -1444,7 +1545,9 @@ def api_create_team_member(request):
             'message': f'Team member created successfully!',
             'team_member': {
                 'id': team_member.id,
-                'name': team_member.get_full_name(),
+                'first_name': team_member.first_name,
+                'middle_name': team_member.middle_name,
+                'last_name': team_member.last_name,
                 'email': team_member.email,
                 'role': team_member.get_role_display(),
                 'state': team_member.state or '',
@@ -1455,11 +1558,11 @@ def api_create_team_member(request):
                 'phone_number': team_member.phone_number or '',
                 'government_service_id': team_member.government_service_id or '',
                 'designation': team_member.designation or '',
-                'document_proof': request.build_absolute_uri(team_member.document_proof.url) if team_member.document_proof else '',
+                'document_proof': request.build_absolute_uri(team_member.document_proof.url) if team_member.document_proof else None,
                 'can_view_reports': team_member.can_view_reports,
                 'can_approve_reports': team_member.can_approve_reports,
                 'can_manage_teams': team_member.can_manage_teams,
-                'created_date': team_member.assigned_date.isoformat(),
+                'assigned_date': team_member.assigned_date.isoformat(),
                 'authority': team_member.authority.get_full_name(),
             }
         }

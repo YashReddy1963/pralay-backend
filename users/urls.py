@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/authority/team-members/', views.api_get_authority_team_members, name='api_get_authority_team_members'),
     path('api/authority/sub-authorities/', views.api_get_authority_sub_authorities, name='api_get_authority_sub_authorities'),
     path('api/authority/team-members/<int:member_id>/remove/', views.api_remove_team_member, name='api_remove_team_member'),
+    path('api/authority/team-members/<int:member_id>/update/', views.api_update_team_member, name='api_update_team_member'),
     
     # Team Management API endpoints
     path('api/team-members/', views.api_get_team_members, name='api_get_team_members'),
