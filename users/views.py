@@ -460,16 +460,32 @@ def api_login(request):
                 })
         except CustomUser.DoesNotExist:
             pass
-        
-        # TeamMember / SubAuthority: no session; token auth not implemented for non-CustomUser
+
+        # SubAuthority login support (token-based)
         try:
             from django.contrib.auth.hashers import check_password
-            team_member = TeamMember.objects.get(email=email)
-            if team_member.password_hash and check_password(password, team_member.password_hash):
+            sub_authority = SubAuthority.objects.get(email=email)
+            if sub_authority.password_hash and check_password(password, sub_authority.password_hash):
+            
+                # Generate refresh token manually (like CustomUser)
+                refresh_token = RefreshToken.generate_token(sub_authority)
+
                 return JsonResponse({
-                    'error': 'Team member login is not supported via API. Use admin dashboard.'
-                }, status=501)
-        except TeamMember.DoesNotExist:
+                    'success': True,
+                    'message': 'Login successful!',
+                    'token': refresh_token.token,
+                    'refresh_token': refresh_token.token,
+                    'user': {
+                        'id': sub_authority.id,
+                        'email': sub_authority.email,
+                        'first_name': sub_authority.first_name,
+                        'last_name': sub_authority.last_name,
+                        'role': sub_authority.role,  # Important
+                        'state': sub_authority.state,
+                        'district': sub_authority.district,
+                    }
+                })
+        except SubAuthority.DoesNotExist:
             pass
         
         try:
