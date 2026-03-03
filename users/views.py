@@ -1702,7 +1702,9 @@ def api_get_sub_authority_team_members(request):
         for member in team_members:
             team_members_data.append({
                 'id': member.id,
-                'name': member.get_full_name(),
+                'first_name': member.first_name,
+                'middle_name': member.middle_name,
+                'last_name': member.last_name,
                 'email': member.email,
                 'role': member.get_role_display(),
                 'state': member.state or '',
