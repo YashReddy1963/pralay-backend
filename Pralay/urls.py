@@ -47,6 +47,7 @@ urlpatterns = [
             path('api/debug-reports/', hazard_report_views.DebugReportsView.as_view(), name='debug_reports'),
             path('api/test-hazard-reports/', hazard_report_views.TestHazardReportsEndpointView.as_view(), name='test_hazard_reports'),
             path('api/test-email/', hazard_report_views.TestEmailNotificationView.as_view(), name='test_email'),
+            path('api/hazard-image-diagnostic/', hazard_report_views.HazardImageDiagnosticView.as_view(), name='hazard_image_diagnostic'),
             
     # Take Action API endpoints
     path('api/take-action/', take_action_views.take_action_endpoint, name='take_action'),

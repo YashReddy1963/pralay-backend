@@ -375,14 +375,26 @@ class GetHazardReportsView(TokenRequiredMixin, View):
                     for img in images_qs:
                         file_name = getattr(img.image_file, 'name', None)
                         image_url = None
-                        if file_name and default_storage.exists(file_name):
-                            try:
-                                image_url = request.build_absolute_uri(img.image_file.url)
-                            except Exception:
-                                logger.exception(f"Failed to build absolute URL for image id={img.id} name={file_name}")
-                                image_url = None
-                        else:
-                            logger.warning(f"Missing hazard image file on storage: id={img.id} name={file_name}")
+                        file_exists = False
+                        try:
+                            if file_name and default_storage.exists(file_name):
+                                file_exists = True
+                                try:
+                                    image_url = request.build_absolute_uri(img.image_file.url)
+                                except Exception:
+                                    logger.exception(f"Failed to build absolute URL for image id={img.id} name={file_name}")
+                                    image_url = None
+                            else:
+                                # File is missing on storage. Still attempt to provide a URL
+                                # (some deployments may serve media via a CDN or external host),
+                                # but mark file_exists=False so callers can handle gracefully.
+                                logger.warning(f"Missing hazard image file on storage: id={img.id} name={file_name}")
+                                try:
+                                    image_url = request.build_absolute_uri(img.image_file.url)
+                                except Exception:
+                                    image_url = None
+                        except Exception:
+                            logger.exception(f"Error checking storage for image id={getattr(img,'id',None)} name={file_name}")
 
                         images_list.append({
                             'id': img.id,
@@ -391,9 +403,11 @@ class GetHazardReportsView(TokenRequiredMixin, View):
                             'is_verified_by_ai': img.is_verified_by_ai,
                             'ai_confidence_score': img.ai_confidence_score,
                             'uploaded_at': img.uploaded_at.isoformat() if img.uploaded_at else None,
-                           'image_url': image_url,
-                           # Duplicate key for frontend compatibility (some clients expect `url`)
-                           'url': image_url
+                            'image_url': image_url,
+                            # Duplicate key for frontend compatibility (some clients expect `url`)
+                            'url': image_url,
+                            'file_exists': file_exists,
+                            'file_name': file_name
                         })
                 except Exception:
                     logger.exception("Unexpected error while serializing hazard images")
@@ -1038,3 +1052,53 @@ class GetMapHazardReportsView(TokenRequiredMixin, View):
                 'message': f'Error fetching map reports: {str(e)}',
                 'reports': []
             }, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class HazardImageDiagnosticView(TokenRequiredMixin, View):
+    """Diagnostic endpoint to inspect hazard image files for a given report.
+
+    Returns file_name, whether default_storage.exists(file_name), and the URL that would be used.
+    Intended for debugging missing media in deployments.
+    """
+
+    def get(self, request):
+        try:
+            report_id = request.GET.get('report_id')
+            if not report_id:
+                return JsonResponse({'success': False, 'message': 'Missing report_id query param'}, status=400)
+
+            try:
+                report = OceanHazardReport.objects.get(report_id=report_id)
+            except OceanHazardReport.DoesNotExist:
+                return JsonResponse({'success': False, 'message': 'Report not found'}, status=404)
+
+            allowed, reason = user_can_access_report(request.user, report)
+            if not allowed:
+                return JsonResponse({'success': False, 'message': 'Access denied', 'reason': reason}, status=403)
+
+            images = []
+            for img in report.hazard_images.all():
+                file_name = getattr(img.image_file, 'name', None)
+                try:
+                    exists = default_storage.exists(file_name) if file_name else False
+                except Exception:
+                    exists = False
+
+                try:
+                    url = request.build_absolute_uri(img.image_file.url)
+                except Exception:
+                    url = None
+
+                images.append({
+                    'id': img.id,
+                    'file_name': file_name,
+                    'file_exists': exists,
+                    'url': url,
+                    'uploaded_at': img.uploaded_at.isoformat() if img.uploaded_at else None,
+                })
+
+            return JsonResponse({'success': True, 'report_id': report.report_id, 'images': images})
+        except Exception as e:
+            logger.exception(f"Error in HazardImageDiagnosticView: {e}")
+            return JsonResponse({'success': False, 'message': f'Error: {str(e)}'}, status=500)
