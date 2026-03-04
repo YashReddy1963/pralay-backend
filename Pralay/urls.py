@@ -27,6 +27,7 @@ from . import hazard_report_views, connection_views, take_action_views, analytic
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('users.urls')),
+    path('api/social/', include('social.urls')),
     # AI Verification API endpoints
     #path('api/verify-image/', verification_views.verify_image_api, name='verify_image'),
     #path('api/verify-video/', verification_views.verify_video_api, name='verify_video'),
