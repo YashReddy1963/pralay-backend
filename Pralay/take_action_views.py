@@ -151,7 +151,7 @@ def take_action_endpoint(request):
             # Make Twilio call with inline TwiML
             try:
                 call = twilio_client.calls.create(
-                    to=member.phone_number,
+                    to="+91" + member.phone_number if not member.phone_number.startswith("+") else member.phone_number,
                     from_=settings.TWILIO_PHONE_NUMBER,
                     twiml=twiml_content
                 )
