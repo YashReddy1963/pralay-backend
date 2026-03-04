@@ -24,6 +24,7 @@ class CustomUser(AbstractUser):
     
     # Contact information
     phone_number = models.CharField(max_length=15, blank=True, null=True)
+    profile_picture = models.FileField(upload_to='profile_pictures/', blank=True, null=True)
     
     # Role and authority information
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='user')
