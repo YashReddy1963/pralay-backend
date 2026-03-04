@@ -233,4 +233,4 @@ TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
 
 # Social and New Feed Configuration
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
-NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY")
+NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
