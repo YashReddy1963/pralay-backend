@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/create-authority/', views.api_create_authority, name='api_create_authority'),
     
     # API endpoints for frontend
+    path('api/auth/profile/', views.api_auth_profile, name='api_auth_profile'),
     path('api/auth/send-otp/', views.api_send_otp, name='api_send_otp'),
     path('api/auth/verify-otp/', views.api_verify_otp, name='api_verify_otp'),
     path('api/auth/register/', views.api_register, name='api_register'),
