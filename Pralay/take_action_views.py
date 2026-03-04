@@ -27,7 +27,15 @@ def take_action_endpoint(request):
     API endpoint for Take Action feature
     Accepts report_id and audio_file, then sends voice calls and emails to team members
     """
+
+    # DEBUG: Check Twilio environment variables
+    print("TWILIO_ACCOUNT_SID:", settings.TWILIO_ACCOUNT_SID)
+    print("TWILIO_AUTH_TOKEN:", settings.TWILIO_AUTH_TOKEN)
+    print("TWILIO_PHONE_NUMBER:", settings.TWILIO_PHONE_NUMBER)
+    
+# Initialize Twilio client
     try:
+        twilio_client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
         # Get the report ID
         report_id = request.POST.get('report_id')
         if not report_id:
