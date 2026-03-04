@@ -39,12 +39,9 @@ class TokenAuthenticationMiddleware:
         Authenticate user using token.
         """
         try:
-            # Hash the token to match the stored format
-            hashed_token = hashlib.sha256(token.encode()).hexdigest()
-            
-            # Find the refresh token
+            # Look up the token in the database
             refresh_token = RefreshToken.objects.filter(
-                token=hashed_token,
+                token=token,
                 is_revoked=False
             ).first()
             
@@ -58,35 +55,23 @@ class TokenAuthenticationMiddleware:
 
 def token_authenticate_user(request):
     """
-    Helper function to authenticate user via token in views.
-    Returns the authenticated user or None.
+    Authenticate user from Authorization: Bearer <token>.
     """
     auth_header = request.headers.get('Authorization', '')
-    print(f"DEBUG: Authorization header: {auth_header[:50]}..." if auth_header else "DEBUG: No Authorization header")
-    
+
     if auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        print(f"DEBUG: Extracted token: {token[:20]}...")
+        token = auth_header.split(' ')[1].strip()
+
         try:
-            # Hash the token to match the stored format
-            hashed_token = hashlib.sha256(token.encode()).hexdigest()
-            print(f"DEBUG: Hashed token: {hashed_token[:20]}...")
-            
-            # Find the refresh token
             refresh_token = RefreshToken.objects.filter(
-                token=hashed_token,
+                token=token,
                 is_revoked=False
             ).first()
-            
-            print(f"DEBUG: Found refresh token: {refresh_token is not None}")
-            if refresh_token:
-                print(f"DEBUG: Token valid: {refresh_token.is_valid()}")
-                print(f"DEBUG: Token user: {refresh_token.user.email}")
-            
+
             if refresh_token and refresh_token.is_valid():
                 return refresh_token.user
-                
+
         except Exception as e:
-            print(f"DEBUG: Token authentication error: {e}")
-            
+            print(f"Token authentication error: {e}")
+
     return None
