@@ -16,10 +16,10 @@ class TokenAuthenticationMiddleware:
     for API endpoints that expect session authentication.
     """
     
-    def _init_(self, get_response):
+    def __init__(self, get_response):
         self.get_response = get_response
 
-    def _call_(self, request):
+    def __call__(self, request):
         # Only process API endpoints
         if request.path.startswith('/api/'):
             # Check for Authorization header with Bearer token

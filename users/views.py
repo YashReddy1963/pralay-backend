@@ -19,6 +19,7 @@ from .forms import CustomUserCreationForm, CustomAuthenticationForm, AuthorityCr
 from .models import CustomUser, OTP, TeamMember, SubAuthority, SubAuthorityTeamMember, RefreshToken
 from .authentication import token_required
 from ai_verification_service import verify_image_endpoint
+from Pralay.token_auth import token_authenticate_user
 
 logger = logging.getLogger(__name__)
 
