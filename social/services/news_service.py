@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import logging
 
 NEWS_URL = "https://newsapi.org/v2/everything"
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 # Strong flood-related keywords
 POSITIVE_TERMS = [

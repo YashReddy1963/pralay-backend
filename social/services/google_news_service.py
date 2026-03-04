@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import requests
 
 
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 MAX_RESULTS = 20
 FULL_TEXT_RESULTS_LIMIT = 6
