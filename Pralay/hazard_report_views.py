@@ -930,26 +930,34 @@ class TestEmailNotificationView(TokenRequiredMixin, View):
             }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
-class GetMapHazardReportsView(View):
-    """API endpoint for retrieving hazard reports for map display with district filtering"""
+class GetMapHazardReportsView(TokenRequiredMixin, View):
+    """API endpoint for retrieving hazard reports for map. Requires Bearer token."""
     
     def get(self, request):
         try:
-            # Get query parameters
-            status = request.GET.get('status')  # No default - show all reports
+            status = request.GET.get('status')
             hazard_type = request.GET.get('hazard_type')
             limit = int(request.GET.get('limit', 100))
-            
-            # Build base query
             reports_query = OceanHazardReport.objects.select_related('reported_by', 'reviewed_by').prefetch_related('hazard_images')
             
-            # Apply district filtering for district chairmen
-            if request.user.is_authenticated and request.user.role == 'district_chairman':
-                if request.user.district:
-                    reports_query = reports_query.filter(district__icontains=request.user.district)
-                    logger.info(f"Filtering reports for district chairman: {request.user.district}")
-                else:
+            if request.user.role == 'district_chairman':
+                if not request.user.district:
                     logger.warning(f"District chairman {request.user.email} has no district set")
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'District not configured for this user'
+                    }, status=403)
+                reports_query = reports_query.filter(district__iexact=request.user.district)
+                logger.info(f"Filtering reports for district chairman (iexact): {request.user.district}")
+            elif request.user.role == 'state_chairman':
+                if not request.user.state:
+                    logger.warning(f"State chairman {request.user.email} has no state set")
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'State not configured for this user'
+                    }, status=403)
+                reports_query = reports_query.filter(state__iexact=request.user.state)
+                logger.info(f"Filtering reports for state chairman (iexact): {request.user.state}")
             
             # Apply other filters
             if status:
@@ -980,6 +988,12 @@ class GetMapHazardReportsView(View):
                         'ai_confidence_score': img.ai_confidence_score,
                     })
                 
+                # Final per-report access guard (defensive)
+                allowed, reason = user_can_access_report(request.user, report)
+                if not allowed:
+                    logger.warning(f"GetMapHazardReportsView: skipping report {getattr(report,'report_id',report.id)} - access denied: {reason}")
+                    continue
+
                 reports_data.append({
                             'id': report.id,
                             'report_id': report.report_id,
@@ -1022,12 +1036,12 @@ class GetMapHazardReportsView(View):
                 'success': True,
                 'reports': reports_data,
                 'total_count': len(reports_data),
-                'user_role': request.user.role if request.user.is_authenticated else 'anonymous',
-                'user_district': request.user.district if request.user.is_authenticated else None,
+                'user_role': request.user.role,
+                'user_district': request.user.district or None,
                 'filters_applied': {
                     'status': status,
                     'hazard_type': hazard_type,
-                    'district_filtered': request.user.is_authenticated and request.user.role == 'district_chairman'
+                    'district_filtered': request.user.role == 'district_chairman'
                 }
             })
             
