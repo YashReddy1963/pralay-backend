@@ -18,7 +18,8 @@ import uuid
 
 from users.models import OceanHazardReport, HazardImage, CustomUser
 from users.email_service import EmailService
-from users.authentication import TokenRequiredMixin
+from users.authentication import TokenRequiredMixin, token_required
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -1102,3 +1103,91 @@ class HazardImageDiagnosticView(TokenRequiredMixin, View):
         except Exception as e:
             logger.exception(f"Error in HazardImageDiagnosticView: {e}")
             return JsonResponse({'success': False, 'message': f'Error: {str(e)}'}, status=500)
+
+
+# ---------------------------------------------------------------------------
+# New endpoints: authority take-action and citizen mark-resolved
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+@token_required
+def take_action_report(request, report_id: str):
+    """Authority endpoint to set report to under_investigation."""
+    try:
+        allowed_roles = [
+            'state_chairman',
+            'district_chairman',
+            'nagar_panchayat_chairman',
+            'village_sarpanch',
+        ]
+
+        role = (getattr(request.user, 'role', '') or '').strip().lower()
+        if role not in allowed_roles:
+            return JsonResponse({'success': False, 'message': 'Unauthorized role'}, status=403)
+
+        try:
+            report = OceanHazardReport.objects.get(report_id=report_id)
+        except OceanHazardReport.DoesNotExist:
+            return JsonResponse({'success': False, 'message': 'Report not found'}, status=404)
+
+        if report.status in ['under_investigation', 'resolved', 'discarded']:
+            return JsonResponse({'success': False, 'message': 'Invalid state transition'}, status=400)
+
+        report.status = 'under_investigation'
+        report.reviewed_by = request.user
+        report.reviewed_at = timezone.now()
+        report.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Authorities have started taking action',
+            'report': {
+                'report_id': report.report_id,
+                'status': report.status,
+                'reviewed_by': {
+                    'id': report.reviewed_by.id if report.reviewed_by else None,
+                    'name': report.reviewed_by.get_full_name() if report.reviewed_by else None,
+                },
+                'reviewed_at': report.reviewed_at.isoformat() if report.reviewed_at else None,
+            }
+        })
+
+    except Exception as e:
+        logger.exception(f"Error in take_action_report: {e}")
+        return JsonResponse({'success': False, 'message': f'Internal server error: {str(e)}'}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+@token_required
+def mark_report_resolved(request, report_id: str):
+    """Report owner can mark their report resolved when it is under investigation."""
+    try:
+        try:
+            report = OceanHazardReport.objects.get(report_id=report_id)
+        except OceanHazardReport.DoesNotExist:
+            return JsonResponse({'success': False, 'message': 'Report not found'}, status=404)
+
+        if getattr(report.reported_by, 'id', None) != getattr(request.user, 'id', None):
+            return JsonResponse({'success': False, 'message': 'Only report owner can mark resolved'}, status=403)
+
+        if report.status != 'under_investigation':
+            return JsonResponse({'success': False, 'message': 'Report must be under investigation to mark resolved'}, status=400)
+
+        report.status = 'resolved'
+        report.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Report marked as resolved',
+            'report': {
+                'report_id': report.report_id,
+                'status': report.status,
+            }
+        })
+
+    except Exception as e:
+        logger.exception(f"Error in mark_report_resolved: {e}")
+        return JsonResponse({'success': False, 'message': f'Internal server error: {str(e)}'}, status=500)

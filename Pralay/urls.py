@@ -55,6 +55,9 @@ urlpatterns = [
     path('api/take-action/team-members/', take_action_views.get_team_members_endpoint, name='get_take_action_team_members'),
     path('api/take-action/twiml/', take_action_views.twiml_endpoint, name='twiml_endpoint'),
     path('api/test-auth/', take_action_views.test_auth_endpoint, name='test_auth'),
+    # New report lifecycle endpoints
+    path('api/reports/<str:report_id>/take-action/', hazard_report_views.take_action_report, name='report_take_action'),
+    path('api/reports/<str:report_id>/mark-resolved/', hazard_report_views.mark_report_resolved, name='report_mark_resolved'),
     
     # Analytics API endpoints
     path('api/analytics/', analytics_views.analytics_data_endpoint, name='analytics_data'),
