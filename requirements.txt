@@ -17,3 +17,5 @@ requests
 
 cloudinary
 django-cloudinary-storage
+
+razorpay

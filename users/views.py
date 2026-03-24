@@ -14,6 +14,8 @@ from rest_framework.permissions import IsAuthenticated
 from functools import wraps
 import json
 import logging
+import razorpay
+from rest_framework.response import Response
 from .email_service import EmailService
 from .forms import CustomUserCreationForm, CustomAuthenticationForm, AuthorityCreationForm, TeamMemberForm, SubAuthorityForm, SubAuthorityCreationForm, TeamMemberCreationForm, SubAuthorityTeamMemberCreationForm
 from .models import CustomUser, OTP, TeamMember, SubAuthority, SubAuthorityTeamMember, RefreshToken
@@ -2051,3 +2053,57 @@ def api_verify_image(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+# Razorpay payment integration for premium subscription
+@api_view(['POST'])
+def create_razorpay_order(request):
+    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+    amount = 2000
+
+    order = client.order.create({
+        "amount": amount,
+        "currency": "INR",
+        "payment_capture": 1
+    })
+
+    return Response({
+        "order_id": order["id"],
+        "amount": amount,
+        "key": settings.RAZORPAY_KEY_ID
+    })
+
+@api_view(['POST'])
+def verify_payment(request):
+    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+    data = request.data
+
+    try:
+        client.utility.verify_payment_signature({
+            'razorpay_order_id': data['order_id'],
+            'razorpay_payment_id': data['payment_id'],
+            'razorpay_signature': data['signature']
+        })
+
+        # ✅ MARK USER AS PREMIUM
+        user = request.user
+        user.is_premium = True
+        user.save()
+
+        return Response({"status": "success"})
+
+    except:
+        return Response({"status": "failed"}, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile(request):
+    user = request.user
+
+    return Response({
+        "id": user.id,
+        "email": user.email,
+        "is_premium": user.is_premium
+    })

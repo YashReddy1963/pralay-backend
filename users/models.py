@@ -52,6 +52,9 @@ class CustomUser(AbstractUser):
     
     # Activity tracking
     last_login_time = models.DateTimeField(null=True, blank=True, help_text="Last time the user logged in")
+
+    # premium account fields
+    is_premium = models.BooleanField(default=False)
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']

@@ -58,4 +58,9 @@ urlpatterns = [
 
     # AI Verification API endpoint
     path('api/verify-image/', views.api_verify_image, name='api_verify_image'),
+
+    # Razorpay Payment API endpoints
+    path('api/create-order/', views.create_razorpay_order, name='api_create_order'),
+    path('api/verify-payment/', views.verify_payment, name='api_verify_payment'),
+    path('api/profile/', views.user_profile, name='api_profile'),
 ]
