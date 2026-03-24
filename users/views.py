@@ -2098,7 +2098,6 @@ def verify_payment(request):
         return Response({"status": "failed"}, status=400)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def user_profile(request):
     user = request.user
 
