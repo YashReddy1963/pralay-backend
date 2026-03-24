@@ -56,6 +56,10 @@ urlpatterns = [
     path('api/sub-authority/team-members/<int:member_id>/remove/', views.api_remove_sub_authority_team_member, name='api_remove_sub_authority_team_member'),
     path('api/sub-authority/team-members/<int:member_id>/update/', views.api_update_sub_authority_team_member, name='api_update_sub_authority_team_member'),
 
+    # AI Monitoring endpoints for authority users
+    path('api/authority/monitoring/', views.api_get_monitoring, name='api_get_monitoring'),
+    path('api/authority/monitoring/set/', views.api_set_monitoring, name='api_set_monitoring'),
+
     # AI Verification API endpoint
     path('api/verify-image/', views.api_verify_image, name='api_verify_image'),
 ]

@@ -53,6 +53,52 @@ def landing_page(request):
     """Landing page with Register and Login buttons"""
     return render(request, 'landing.html')
 
+
+@csrf_exempt
+@require_http_methods(["GET"])
+@token_required
+def api_get_monitoring(request):
+    """Return AI monitoring setting for the authenticated authority user."""
+    try:
+        if request.user.role not in ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
+            return JsonResponse({'success': False, 'message': 'Access denied'}, status=403)
+
+        setting = getattr(request.user, 'authority_setting', None)
+        ai_monitoring = bool(setting.ai_monitoring) if setting else False
+
+        return JsonResponse({'success': True, 'ai_monitoring': ai_monitoring})
+    except Exception as e:
+        logger.exception(f"Error in api_get_monitoring: {e}")
+        return JsonResponse({'success': False, 'message': 'Internal server error'}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST", "PATCH"])
+@token_required
+def api_set_monitoring(request):
+    """Set AI monitoring on/off for the authenticated authority user. Expects JSON { ai_monitoring: true|false }"""
+    try:
+        if request.user.role not in ['state_chairman', 'district_chairman', 'nagar_panchayat_chairman', 'village_sarpanch']:
+            return JsonResponse({'success': False, 'message': 'Access denied'}, status=403)
+
+        try:
+            body = json.loads(request.body or '{}')
+        except Exception:
+            return JsonResponse({'success': False, 'message': 'Invalid JSON'}, status=400)
+
+        ai_monitoring = bool(body.get('ai_monitoring', False))
+
+        from .models import AuthoritySetting
+
+        setting, created = AuthoritySetting.objects.get_or_create(authority=request.user)
+        setting.ai_monitoring = ai_monitoring
+        setting.save()
+
+        return JsonResponse({'success': True, 'ai_monitoring': setting.ai_monitoring, 'created': created})
+    except Exception as e:
+        logger.exception(f"Error in api_set_monitoring: {e}")
+        return JsonResponse({'success': False, 'message': 'Internal server error'}, status=500)
+
 def register_view(request):
     """User registration view - everyone becomes normal user"""
     if request.user.is_authenticated:
