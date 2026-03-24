@@ -16,8 +16,7 @@ from django.core.files.storage import default_storage
 import base64
 import uuid
 
-from users.models import OceanHazardReport, HazardImage, CustomUser, AuthoritySetting
-from .take_action_views import perform_take_action_for_report
+from users.models import OceanHazardReport, HazardImage, CustomUser
 from users.email_service import EmailService
 from users.authentication import TokenRequiredMixin, token_required
 from django.utils import timezone
@@ -282,48 +281,6 @@ class SubmitHazardReportView(TokenRequiredMixin, View):
                 )
                 
                 hazard_report.save()
-
-            # --- AI Monitoring: automatic verification and take-action if enabled ---
-            try:
-                # Find responsible authority: prefer district chairman, fallback to state chairman
-                authority_user = None
-                if hazard_report.district:
-                    authority_user = CustomUser.objects.filter(
-                        role='district_chairman',
-                        district__iexact=hazard_report.district,
-                        state__iexact=hazard_report.state
-                    ).first()
-
-                if not authority_user and hazard_report.state:
-                    authority_user = CustomUser.objects.filter(
-                        role='state_chairman',
-                        state__iexact=hazard_report.state
-                    ).first()
-
-                if authority_user:
-                    setting = getattr(authority_user, 'authority_setting', None)
-                    if setting and setting.ai_monitoring:
-                        # Auto-verify
-                        hazard_report.is_verified = True
-                        hazard_report.status = 'verified'
-                        hazard_report.reviewed_by = authority_user
-                        hazard_report.reviewed_at = timezone.now()
-                        hazard_report.save()
-
-                        # Auto trigger take-action: set under_investigation and notify team
-                        hazard_report.status = 'under_investigation'
-                        hazard_report.reviewed_by = authority_user
-                        hazard_report.reviewed_at = timezone.now()
-                        hazard_report.save()
-
-                        # Perform notifications (emails / calls)
-                        try:
-                            perform_take_action_for_report(hazard_report, authority_user)
-                        except Exception as e:
-                            logger.exception(f"Auto take-action failed for {hazard_report.report_id}: {e}")
-
-            except Exception as e:
-                logger.exception(f"AI monitoring auto-flow error for report {hazard_report.report_id}: {e}")
             
             return JsonResponse({
                 'success': True,

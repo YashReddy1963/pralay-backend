@@ -285,15 +285,6 @@ class SubAuthority(models.Model):
     def __str__(self):
         return f"{self.get_full_name()} - Sub-authority of {self.creator.get_full_name()}"
 
-
-class AuthoritySetting(models.Model):
-    """Settings for authority users, such as AI monitoring toggle."""
-    authority = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='authority_setting')
-    ai_monitoring = models.BooleanField(default=False, help_text='If true, AI Monitoring will auto-verify and trigger actions')
-
-    def __str__(self):
-        return f"Settings for {self.authority.get_full_name()} - AI Monitoring: {self.ai_monitoring}"
-
 class RefreshToken(models.Model):
     """Model for storing refresh tokens"""
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='refresh_tokens')
