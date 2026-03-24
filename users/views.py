@@ -2098,11 +2098,18 @@ def verify_payment(request):
         return Response({"status": "failed"}, status=400)
 
 @api_view(['GET'])
+@token_required
 def user_profile(request):
+    """Return basic profile info for authenticated user.
+
+    If the request is not authenticated, the token_required decorator will
+    return a 401 JsonResponse. This protects anonymous access which previously
+    caused an AttributeError when accessing request.user.email.
+    """
     user = request.user
 
     return Response({
-        "id": user.id,
-        "email": user.email,
-        "is_premium": user.is_premium
+        "id": getattr(user, 'id', None),
+        "email": getattr(user, 'email', None),
+        "is_premium": getattr(user, 'is_premium', False)
     })
